@@ -125,6 +125,9 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 	// Start message error logger
 	go node.logErrorMsg()
 
+	// Suggest new block
+	go node.sendDummyMsg()
+
 	return node
 }
 
@@ -183,8 +186,8 @@ func (node *Node) startTransitionWithDeadline(state consensus.PBFT, timeStamp in
 
 	// Check the time is skewed.
 	timeDiff := time.Until(d).Nanoseconds()
-	fmt.Printf("The deadline for sequenceID %d is %d ms. (Skewed %d ms)\n",
-	           state.GetSequenceID(),
+	fmt.Printf("The deadline for request timestamped %d is %d ms. (Skewed %d ms)\n",
+	           state.GetReqMsg().Timestamp,
 	           timeDiff / int64(time.Millisecond),
 	           (ConsensusDeadline.Nanoseconds() - timeDiff) / int64(time.Millisecond))
 
@@ -549,4 +552,52 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 	}
 
 	return state, nil
+}
+
+func (node *Node) sendDummyMsg() {
+	// Set periodic send signal.
+	ticker := time.NewTicker(time.Millisecond * 500)
+	defer ticker.Stop()
+
+	// Create a dummy data.
+	data := make([]byte, 1 << 20)
+	for i := range data {
+		data[i] = 'A'
+	}
+	data[len(data) - 1] = 0
+
+	// Primary node sends dummy message when the timer is triggered.
+	for {
+		select {
+		case <-ticker.C:
+			// TODO: Changing view must precedes sending request message.
+
+			// Check this node is primary node and
+			// not in changing view.
+			primaryNode := node.View.Primary
+			if primaryNode != node.MyInfo || node.IsViewChanging {
+				continue
+			}
+
+			// Create a dummy message.
+			timestamp := time.Now().UnixNano()
+			dummy := dummyMsg("Op1", primaryNode.NodeID, data, timestamp)
+
+			// Broadcast the dummy message.
+			node.MsgOutbound <- &MsgOut{Path: node.MyInfo.Url + "/req", Msg: dummy}
+		}
+	}
+}
+
+func dummyMsg(operation string, clientID string, data []byte, timestamp int64) []byte {
+	var msg consensus.RequestMsg
+	msg.Operation = operation
+	msg.ClientID = clientID
+	msg.Data = string(data)
+	msg.Timestamp = timestamp
+
+	// {"operation": "Op1", "clientID": "Client1", "data": "JJWEJPQOWJE", "timestamp": 190283901}
+	jsonMsg, _ := json.Marshal(&msg)
+
+	return []byte(jsonMsg)
 }

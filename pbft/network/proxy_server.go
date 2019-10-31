@@ -73,9 +73,6 @@ func (server *Server) Start() {
 }
 
 func (server *Server) DialOtherNodes() {
-	// Sleep until all nodes perform ListenAndServ().
-	time.Sleep(time.Second * 3)
-
 	// Normal case.
 	var cReq = make(map[string]*websocket.Conn)
 	var cPrePrepare = make(map[string]*websocket.Conn)
@@ -100,7 +97,10 @@ func (server *Server) DialOtherNodes() {
 		cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
 
-	go server.sendDummyMsg()
+	// Sleep until all nodes perform ListenAndServ().
+	log.Println("Sleep enough time!")
+	time.Sleep(time.Second * 3)
+	log.Println("Wake up!")
 
 	// Wait.
 	select {}
@@ -112,15 +112,16 @@ func (server *Server) setReceiveLoop(path string, nodeInfo *NodeInfo) *websocket
 	u := url.URL{Scheme: "ws", Host: nodeInfo.Url, Path: path}
 	log.Printf("connecting to %s", u.String())
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-		return nil
+	// Must be connected.
+	for {
+		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			log.Println("dial:", err)
+			continue
+		}
+		go server.receiveLoop(c, path, nodeInfo)
+		return c
 	}
-
-	go server.receiveLoop(c, path, nodeInfo)
-
-	return c
 }
 
 func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *NodeInfo) {
@@ -206,53 +207,6 @@ func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *Node
 	}
 }
 
-func (server *Server) sendDummyMsg() {
-	// Set periodic send signal.
-	ticker := time.NewTicker(time.Millisecond * 500)
-	defer ticker.Stop()
-
-	// Create a dummy data.
-	data := make([]byte, 1 << 20)
-	for i := range data {
-		data[i] = 'A'
-	}
-	data[len(data) - 1] = 0
-
-	currentView := server.node.View.ID
-
-	// Current node sends dummy message when private view (currentView)
-	// is primary. (e.g., if the node index in the node table is 3,
-	// and current view ID is 1, the third dummy request message
-	// is sent from the current node.)
-	for {
-		select {
-		case <-ticker.C:
-			// Send message from the current (changed) primary node.
-			// Changing view must precedes sending request message.
-			primaryNode := server.node.getPrimaryInfoByID(currentView)
-
-			// TODO: change view based on that of the current node.
-			currentView++
-			if primaryNode.NodeID != server.node.MyInfo.NodeID {
-				continue
-			}
-
-			// Create a dummy message.
-			u := primaryNode.Url + "/req"
-			dummy := dummyMsg("Op1", primaryNode.NodeID, data)
-
-			// Broadcast the dummy message.
-			errCh := make(chan error, 1)
-			log.Printf("Broadcasting dummy message from %s", u)
-			broadcast(errCh, u, dummy, server.node.PrivKey)
-			err := <-errCh
-			if err != nil {
-				log.Println(err)
-			}
-		}
-	}
-}
-
 func broadcast(errCh chan<- error, url string, msg []byte, privKey *ecdsa.PrivateKey) {
 	sigMgsBytes := attachSignatureMsg(msg, privKey)
 	url = "ws://" + url // Fix using url.URL{}
@@ -300,21 +254,4 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey) ([]byte, error, b
 	// msg VerifySignature
 	ok := consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
 	return sigMgs.MarshalledMsg, nil, ok
-}
-
-func dummyMsg(operation string, clientID string, data []byte) []byte {
-	var msg consensus.RequestMsg
-	msg.Operation = operation
-	msg.ClientID = clientID
-	msg.Data = string(data)
-	msg.Timestamp = time.Now().UnixNano()
-
-	// {"operation": "Op1", "clientID": "Client1", "data": "JJWEJPQOWJE", "timestamp": 190283901}
-	jsonMsg, err := json.Marshal(&msg)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-
-	return []byte(jsonMsg)
 }

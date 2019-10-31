@@ -33,9 +33,12 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// Ignore VIEW-CHANGE message if the next view id is not new.
 	var nextviewid = node.View.ID + 1
 	if nextviewid > viewchangeMsg.NextViewID {
+		fmt.Printf("Old view message received! (nextviewid: %d, viewchangeMsg: %d)\n",
+		            nextviewid, viewchangeMsg.NextViewID)
 		return
 	} else if nextviewid != viewchangeMsg.NextViewID {
-		fmt.Println("Future view message received!!!!")
+		fmt.Printf("Future view message received!!!! (nextviewid: %d, viewchangeMsg: %d)\n",
+		            nextviewid, viewchangeMsg.NextViewID)
 		return
 	}
 
@@ -87,30 +90,8 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 }
 
 func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) {
-	// Search min_s the sequence number of the latest stable checkpoint and
-	// max_s the highest sequence number in a prepare message in V.
-	var min_s int64 = 0
-	var max_s int64 = 0
-
 	fmt.Println("***********************N E W V I E W***************************")
-	for _, vcm := range newViewMsg.SetViewChangeMsgs {
-		if min_s < vcm.StableCheckPoint {
-			min_s = vcm.StableCheckPoint
-		}
-
-		for seq, prepareSet := range vcm.SetP {
-			if seq < max_s {
-				continue
-			}
-			for _, prepareMsg := range prepareSet.PrepareMsgs {
-				if max_s < prepareMsg.SequenceID {
-					max_s = prepareMsg.SequenceID
-				}
-			}
-		}
-	}
-
-	fmt.Println("min_s ", min_s, "max_s", max_s)
+	_, _ = findMinMaxS(newViewMsg)
 
 	// Create SetPrePrepareMsgs of the new-view for redo
 	// only if a preprepare message of the SetPrePrepareMsgs with sequence number seq is nil.
@@ -132,7 +113,9 @@ func (node *Node) GetNewView(msg *consensus.NewViewMsg) error {
 
 	// TODO this node has to start redo
 	// verify view number of new-view massage
-	if msg.NextViewID != node.View.ID + 1 {
+	if node.View.ID + 1 > msg.NextViewID {
+		fmt.Printf("Old view message received! (nextviewid: %d, newViewMsg: %d)\n",
+		            node.View.ID + 1, msg.NextViewID)
 		return nil
 	}
 
@@ -145,6 +128,10 @@ func (node *Node) GetNewView(msg *consensus.NewViewMsg) error {
 
 	// Change View and Primary
 	node.updateView(msg.NextViewID)
+	// Update the current sequence number into the latest sequence number
+	// which is contained in NEW-VIEW message.
+	_, max_s := findMinMaxS(msg)
+	atomic.StoreInt64(&node.TotalConsensus, max_s)
 
 	node.VCState = nil
 
@@ -206,4 +193,31 @@ func (node *Node) CreateViewChangeMsg(setp map[int64]*consensus.SetPm) *consensu
 		SetC: setc,
 		SetP: setp,
 	}
+}
+
+func findMinMaxS(newViewMsg *consensus.NewViewMsg) (int64, int64) {
+	// Search min_s the sequence number of the latest stable checkpoint and
+	// max_s the highest sequence number in a prepare message in V.
+	var min_s int64 = 0
+	var max_s int64 = 0
+
+	for _, vcm := range newViewMsg.SetViewChangeMsgs {
+		if min_s < vcm.StableCheckPoint {
+			min_s = vcm.StableCheckPoint
+		}
+
+		for seq, prepareSet := range vcm.SetP {
+			if seq < max_s {
+				continue
+			}
+			for _, prepareMsg := range prepareSet.PrepareMsgs {
+				if max_s < prepareMsg.SequenceID {
+					max_s = prepareMsg.SequenceID
+				}
+			}
+		}
+	}
+
+	fmt.Println("min_s ", min_s, "max_s", max_s)
+	return min_s, max_s
 }
