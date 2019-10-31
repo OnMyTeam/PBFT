@@ -64,8 +64,12 @@ func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error
 	// Print current voting status.
 	fmt.Printf("[View-Change-Vote]: %d\n", newTotalViewchangeMsg)
 
+	// Check this node is in changing view.
+	_, ok := vcs.ViewChangeMsgLogs.ViewChangeMsgs[vcs.NodeID]
+
 	// Return NEW-VIEW message only once.
-	if int(newTotalViewchangeMsg) >= 2*vcs.f + 1 &&
+	if ok &&
+	   int(newTotalViewchangeMsg) >= 2*vcs.f + 1 &&
 	   atomic.CompareAndSwapInt32(&vcs.ViewChangeMsgLogs.msgSent, 0, 1) {
 		return &NewViewMsg{
 			NextViewID: vcs.NextViewID,
