@@ -18,7 +18,7 @@ type Node struct {
 	NodeTable       []*NodeInfo
 	View            *View
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
-	VCState *consensus.VCState
+	ViewChangeState *consensus.ViewChangeState
 	CommittedMsgs   []*consensus.RequestMsg // kinda block.
 	TotalConsensus  int64 // atomic. number of consensus started so far.
 	IsViewChanging  bool
@@ -91,7 +91,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),
 		CommittedMsgs:   make([]*consensus.RequestMsg, 0),
-		VCState: nil,
+		ViewChangeState: nil,
 
 		// Channels
 		MsgEntrance: make(chan interface{}, len(nodeTable) * 3),
@@ -346,14 +346,16 @@ func (node *Node) routeMsg(msgEntered interface{}) {
 		}
 	case *consensus.ReplyMsg:
 		node.MsgDelivery <- msg
-	case *consensus.ViewChangeMsg:
-		node.MsgDelivery <- msg
 	}
 
 	// Messages are broadcasted from the node, so
 	// the message sent to itself can exist.
 	switch msg := msgEntered.(type) {
 	case *consensus.CheckPointMsg:
+		if node.MyInfo.NodeID != msg.NodeID {
+			node.MsgDelivery <- msg
+		}
+	case *consensus.ViewChangeMsg:
 		if node.MyInfo.NodeID != msg.NodeID {
 			node.MsgDelivery <- msg
 		}
@@ -391,7 +393,7 @@ func (node *Node) resolveMsg() {
 		case *consensus.CheckPointMsg:
 			node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
-			node.GetViewChange(msg)
+			err = node.GetViewChange(msg)
 		case *consensus.NewViewMsg:
 			err = node.GetNewView(msg)
 		}
@@ -417,18 +419,6 @@ func (node *Node) executeMsg() {
 		msgPair := <-node.MsgExecution
 		pairs[msgPair.committedMsg.SequenceID] = msgPair
 		committedMsgs = make([]*consensus.RequestMsg, 0)
-
-		// if msg with sequence number n is already executed, skip to send a reply of the msg with n
-		var isExecuted bool = false
-		for _, cmsg := range node.CommittedMsgs {
-			if cmsg.SequenceID == msgPair.committedMsg.SequenceID {
-				isExecuted = true
-		break
-			}
-		}
-		if isExecuted {
-			continue
-		}
 
 		// Execute operation for all the consecutive messages.
 		for {
@@ -509,7 +499,6 @@ func (node *Node) sendMsg() {
 			go func() {
 				broadcast(errCh, msg.Path, msg.Msg, node.PrivKey)
 			}()
-
 			select {
 			case err := <-errCh:
 				if err != nil {
