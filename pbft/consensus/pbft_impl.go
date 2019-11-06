@@ -3,10 +3,11 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"time"
 	"sync"
 	"sync/atomic"
 )
-
+const prepareSigma, voteSigma, collateSigma, vcSigma time.Duration = 30, 30, 30, 1000
 type State struct {
 	ViewID          int64
 	NodeID          string
@@ -18,32 +19,49 @@ type State struct {
 	// f: the number of Byzantine faulty nodes
 	// f = (n-1) / 3
 	// e.g., n = 5, f = 1
+
+	/* Adaptive BFT */
+	// f: the number of Byzantine faulty nodes
+	// AQ = f - b + floor(h+1/2)
+	// e.g., n = 5, f = 2, h = 3, b=0 AQ=2-0+floor(3+1/2) = 4
 	F int
+	B int
+	BNode map[string]int
 
-	// Cache the invariant digest of ReqMsg for each sequence ID.
-	digest string
-
-	// checkpointdelete check
-	succChkPointDelete int64
+	prepareTimer	*time.Timer
+	voteTimer		*time.Timer
+	collateTimer 	*time.Timer
+	viewchangeTimer	*time.Timer
+	prepareCanceled		chan struct {}
+	voteCanceled		chan struct {}
+	collateCanceled		chan struct {}
+	viewchangeCanceled	chan struct {}
 }
 
 type MsgLogs struct {
-	ReqMsg        *RequestMsg
-	PrePrepareMsg *PrePrepareMsg
-	PrepareMsgs   map[string]*VoteMsg
-	CommitMsgs    map[string]*VoteMsg
+	//ReqMsg        *RequestMsg
+	Digest 			string
+	//PrePrepareMsg *PrePrepareMsg
+	//PrepareMsgs   map[string]*VoteMsg
+	//CommitMsgs    map[string]*VoteMsg
+	PrepareMsg    *PrepareMsg
+	SentVoteMsg	  *VoteMsg
+	VoteMsgs       map[string]*VoteMsg
+	CollateMsgs    map[string]*CollateMsg
 
-	PrepareMsgsMutex sync.RWMutex
-	CommitMsgsMutex  sync.RWMutex
+	//PrepareMsgsMutex sync.RWMutex
+	//CommitMsgsMutex  sync.RWMutex
+	VoteMsgsMutex sync.RWMutex
+	CollateMsgsMutex sync.RWMutex
 
 	// Count PREPARE message created from the current node
 	// as one PREPARE message. PRE-PREPARE message from
 	// primary node is also regarded as PREPARE message but
 	// do not count it, because it is not real PREPARE message.
-	// Count COMMIT message created from the current node
-	// as one COMMIT message.
-	TotalPrepareMsg  int32 // atomic
-	TotalCommitMsg   int32 // atomic
+	//TotalPrepareMsg  int32 // atomic
+	//TotalCommitMsg   int32 // atomic
+	TotalVoteMsg int32
+	TotalCollateMsg int32
 
 	// Flags whether each message has broadcasted.
 	// Its value is atomically swapped by CompareAndSwapInt32().
@@ -56,29 +74,36 @@ func CreateState(viewID int64, nodeID string, totNodes int) *State {
 		ViewID: viewID,
 		NodeID: nodeID,
 		MsgLogs: &MsgLogs{
-			ReqMsg:        nil,
-			PrePrepareMsg: nil,
-			PrepareMsgs:   make(map[string]*VoteMsg),
-			CommitMsgs:    make(map[string]*VoteMsg),
+			//ReqMsg:        nil,
+			//PrePrepareMsg: nil,
+			//PrepareMsgs:   make(map[string]*VoteMsg),
+			//CommitMsgs:    make(map[string]*VoteMsg),
+			PrepareMsg:    nil,
+			SentVoteMsg: 	nil,
+			VoteMsgs:	   make(map[string]*VoteMsg),
+			CollateMsgs:   make(map[string]*CollateMsg),
 
 			// Setting these counters during consensus is unsafe
 			// because quorum condition check can be skipped.
-			TotalPrepareMsg: 0,
-			TotalCommitMsg: 0,
+			// TotalPrepareMsg: 0,
+			// TotalCommitMsg: 0,
+			TotalVoteMsg:		0,
+			TotalCollateMsg:    0,
 
 			commitMsgSent: 0,
 			replyMsgSent: 0,
 		},
 		MsgState: make(chan interface{}, totNodes), // stack enough
 
-		F: (totNodes - 1) / 3,
-		succChkPointDelete: 0,
+		//F: (totNodes - 1) / 3,
+		F: (totNodes-1) / 2,
+		B: 0,
 	}
 
 	return state
 }
-
-func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) *PrePrepareMsg {
+/*
+func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) (*PrepareMsg, error) {
 	// From TOCS: The primary picks the "ordering" for execution of
 	// operations requested by clients. It does this by assigning
 	// the next available `sequence number` to a request and sending
@@ -94,135 +119,222 @@ func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) *PrePr
 	state.MsgLogs.ReqMsg = request
 
 	// Get the digest of the request message
-	state.digest = Digest(request)
-
-	// Create PREPREPARE message.
-	prePrepareMsg := &PrePrepareMsg{
-		ViewID:     state.ViewID,
-		SequenceID: request.SequenceID,
-		Digest:     state.digest,
+	digest, err := Digest(request)
+	if err != nil {
+		return nil, err
 	}
-
+	state.MsgLogs.Digest = digest
+	
+	// Create PREPREPARE message.
+	//prePrepareMsg := &PrePrepareMsg{
+	//	ViewID:     state.ViewID,
+	//	SequenceID: request.SequenceID,
+	//	Digest:     digest,
+	//}
+	
+	// Create PREPARE message.
+	prepareMsg := &PrepareMsg{
+		//EpochID: state.EpochID
+		ViewID: state.ViewID,
+		SequenceID: request.SequenceID,
+		Digest: digest,
+		NodeID: "",
+		Signature: "",
+	}
 	// Accessing to the message log without locking is safe because
 	// nobody except for this node starts consensus at this point,
 	// i.e., the node has not registered this state yet.
-	state.MsgLogs.PrePrepareMsg = prePrepareMsg
+	//state.MsgLogs.PrePrepareMsg = prePrepareMsg
+	state.MsgLogs.PrepareMsg = prepareMsg
 
-	return prePrepareMsg
-}
-
-func (state *State) PrePrepare(prePrepareMsg *PrePrepareMsg) (*VoteMsg, error) {
-	// Log PREPREPARE message.
-	state.MsgLogs.PrePrepareMsg = prePrepareMsg
-
-	// Set sequence number same as PREPREPARE message sent from Primary.
-	state.SequenceID = prePrepareMsg.SequenceID
-
-	// Verify if v, n(a.k.a. sequenceID), d are correct.
-	if err := state.verifyMsg(prePrepareMsg.ViewID, prePrepareMsg.SequenceID, prePrepareMsg.Digest); err != nil {
-		return nil, errors.New("pre-prepare message is corrupted: " + err.Error() + " (sequenceID: " + fmt.Sprintf("%d", prePrepareMsg.SequenceID) + ")")
-	}
-
-	// Create PREPARE message.
-	prepareMsg := &VoteMsg{
-		ViewID:     state.ViewID,
-		SequenceID: prePrepareMsg.SequenceID,
-		Digest:     prePrepareMsg.Digest,
-		MsgType:    PrepareMsg,
-	}
-
+	//return prePrepareMsg, nil
 	return prepareMsg, nil
 }
+*/
+func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
+	
+	// case1: Prepare Timer expires.. sending NULLMSG
+	if prepareMsg == nil {	
+		voteMsg := &VoteMsg{
+			ViewID: state.ViewID,
+			Digest: state.MsgLogs.Digest,
+			PrepareMsg: prepareMsg,
+			NodeID: "",
+			Signature: "",
+			SequenceID: state.SequenceID, 				//This sequence number is already known..
+			MsgType: NULLMSG,
+		}
+		return voteMsg, nil
+	}
+	// case2: prepareMsg which arrived in right time
+	// Log PREPARE message.
+	state.MsgLogs.PrepareMsg = prepareMsg
 
-func (state *State) Prepare(prepareMsg *VoteMsg) (*VoteMsg, error) {
+	// From TOCS: The primary picks the "ordering" for execution of
+	// operations requested by clients. It does this by assigning
+	// the next available `sequence number` to a request and sending
+	// this assignment to the backups.
+	state.SequenceID = prepareMsg.SequenceID
+
+	voteMsg := &VoteMsg{
+		ViewID: state.ViewID,
+		Digest: state.MsgLogs.Digest,
+		PrepareMsg: prepareMsg,
+		NodeID: "",
+		Signature: "",
+		SequenceID: state.SequenceID,
+		MsgType: VOTE,
+	}	
+	state.MsgLogs.SentVoteMsg = voteMsg
+
+	// Verify if v, n(a.k.a. sequenceID), d are correct.
 	if err := state.verifyMsg(prepareMsg.ViewID, prepareMsg.SequenceID, prepareMsg.Digest); err != nil {
-		return nil, errors.New("prepare message is corrupted: " + err.Error() + " (nodeID: " + prepareMsg.NodeID + ")")
+		state.SetBizantine(prepareMsg.NodeID)
+		voteMsg.MsgType = REJECT 				
+		//return nil, errors.New("pre-prepare message is corrupted: " + err.Error() + " (operation: " + prePrepareMsg.RequestMsg.Operation + ")")
+	}
+	return voteMsg, nil
+}
+
+func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
+	// case1: Vote Timer expires.. sending UNCOMMITTED
+	if voteMsg == nil {		//Timeout.. sending null-msg
+		collateMsg := &CollateMsg{
+	   		ReceivedPrepare:	state.MsgLogs.PrepareMsg,
+	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		SentVoteMsg:    	state.MsgLogs.SentVoteMsg,
+	   		ViewID:				state.ViewID,
+	   		Digest:				state.MsgLogs.Digest,
+	   		NodeID:				"",
+	   		Signature:			"",
+	   		SequenceID:			state.SequenceID,
+	   		MsgType:			UNCOMMITTED,
+		}
+		return collateMsg, nil
 	}
 
+	// case2: voteMsg which arrived in right time
+	if err := state.verifyMsg(voteMsg.ViewID, voteMsg.SequenceID, voteMsg.Digest); err != nil {
+		state.SetBizantine(voteMsg.NodeID)
+		return nil, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
+	}
 	// Append msg to its logs
-	state.MsgLogs.PrepareMsgsMutex.Lock()
-	if _, ok := state.MsgLogs.PrepareMsgs[prepareMsg.NodeID]; ok {
-		fmt.Printf("Prepare message from %s is already received, sequence number=%d\n",
-		           prepareMsg.NodeID, state.SequenceID)
-		state.MsgLogs.PrepareMsgsMutex.Unlock()
+	state.MsgLogs.VoteMsgsMutex.Lock()
+	if _, ok := state.MsgLogs.VoteMsgs[voteMsg.NodeID]; ok {
+		state.SetBizantine(voteMsg.NodeID)
+		fmt.Printf("Vote message from %s is already received, sequence number=%d\n",
+		           voteMsg.NodeID, state.SequenceID)
+		state.MsgLogs.VoteMsgsMutex.Unlock()
 		return nil, nil
 	}
-	state.MsgLogs.PrepareMsgs[prepareMsg.NodeID] = prepareMsg
-	state.MsgLogs.PrepareMsgsMutex.Unlock()
-	newTotalPrepareMsg := atomic.AddInt32(&state.MsgLogs.TotalPrepareMsg, 1)
+	state.MsgLogs.VoteMsgs[voteMsg.NodeID] = voteMsg
+	state.MsgLogs.VoteMsgsMutex.Unlock()
+	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
 
 	// Print current voting status
-	fmt.Printf("[Prepare-Vote]: %d, from %s, sequence number: %d\n",
-	           newTotalPrepareMsg, prepareMsg.NodeID, prepareMsg.SequenceID)
+	fmt.Printf("[Vote-Collate]: %d, from %s, sequence number: %d\n",
+	           newTotalVoteMsg, voteMsg.NodeID, voteMsg.SequenceID)
 
 	// Return commit message only once.
-	if int(newTotalPrepareMsg) >= 2*state.F && state.prepared() &&
-	   atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
-		// Create COMMIT message.
-		commitMsg := &VoteMsg{
-			ViewID:     state.ViewID,
-			SequenceID: prepareMsg.SequenceID,
-			Digest:     prepareMsg.Digest,
-			MsgType:    CommitMsg,
-		}
-
-		return commitMsg, nil
+	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
+	if int(newTotalVoteMsg) >= state.F - state.B + 1 && state.prepared() &&
+	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
+	   	// Create COLLATE message.
+	   	collateMsg := &CollateMsg{
+	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+	   		ViewID:		state.ViewID,
+	   		Digest:		state.MsgLogs.Digest,
+	   		NodeID:		"",
+	   		Signature:	"",
+	   		SequenceID:	state.SequenceID,
+	   		MsgType:	COMMITTED,
+	   	}
+		return collateMsg, nil
 	}
 
 	return nil, nil
 }
 
-func (state *State) Commit(commitMsg *VoteMsg) (*ReplyMsg, *RequestMsg, error) {
-	if err := state.verifyMsg(commitMsg.ViewID, commitMsg.SequenceID, commitMsg.Digest); err != nil {
-		return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
+func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
+	if err := state.verifyMsg(collateMsg.ViewID, collateMsg.SequenceID, collateMsg.Digest); err != nil {
+		state.SetBizantine(collateMsg.NodeID)
+		//return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
+		return nil, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
 	}
 
 	// Append msg to its logs
-	state.MsgLogs.CommitMsgsMutex.Lock()
-	if _, ok := state.MsgLogs.CommitMsgs[commitMsg.NodeID]; ok {
+	state.MsgLogs.CollateMsgsMutex.Lock()
+	if _, ok := state.MsgLogs.CollateMsgs[collateMsg.NodeID]; ok {
+		state.SetBizantine(collateMsg.NodeID)
 		fmt.Printf("Commit message from %s is already received, sequence number=%d\n",
-		           commitMsg.NodeID, state.SequenceID)
-		state.MsgLogs.CommitMsgsMutex.Unlock()
-		return nil, nil, nil
+		           collateMsg.NodeID, state.SequenceID)
+		state.MsgLogs.CollateMsgsMutex.Unlock()
+		return nil, false,nil
 	}
-	state.MsgLogs.CommitMsgs[commitMsg.NodeID] = commitMsg
-	state.MsgLogs.CommitMsgsMutex.Unlock()
-	newTotalCommitMsg := atomic.AddInt32(&state.MsgLogs.TotalCommitMsg, 1)
+
+	state.MsgLogs.CollateMsgs[collateMsg.NodeID] = collateMsg
+	state.MsgLogs.CollateMsgsMutex.Unlock()
+	newTotalCollateMsg := atomic.AddInt32(&state.MsgLogs.TotalCollateMsg, 1)
 
 	// Print current voting status
-	fmt.Printf("[Commit-Vote]: %d, from %s, sequence number: %d\n",
-	           newTotalCommitMsg, commitMsg.NodeID, commitMsg.SequenceID)
+	fmt.Printf("[Collate-Vote]: %d, from %s, sequence number: %d\n",
+	           newTotalCollateMsg, collateMsg.NodeID, collateMsg.SequenceID)
 
-	// Return reply message only once.
-	if int(newTotalCommitMsg) >= 2*state.F + 1 && state.committed() &&
-	   atomic.CompareAndSwapInt32(&state.MsgLogs.replyMsgSent, 0, 1) {
-		fmt.Printf("[Commit-Vote]: committed. sequence number: %d\n", state.SequenceID)
-		request := state.MsgLogs.ReqMsg
-		if request == nil {
-			return nil, nil, errors.New("Reply message created but committed message is nil")
+	commitFlag:=false;
+	switch collateMsg.MsgType {
+	case COMMITTED:		// Received Committed Msg from Other.. Reply the Msg
+		commitFlag = true;
+	case UNCOMMITTED:
+		state.Collating()
+		if int(state.MsgLogs.TotalVoteMsg) >= state.F - state.B + 1 {
+			commitFlag = true;
 		}
-
-		return &ReplyMsg{
-			ViewID:    state.ViewID,
-			Timestamp: state.MsgLogs.ReqMsg.Timestamp,
-			ClientID:  state.MsgLogs.ReqMsg.ClientID,
-			// Nodes must execute the requested operation
-			// locally and assign the result into reply message,
-			// with considering their operation ordering policy.
-			Result: "",
-		}, state.MsgLogs.ReqMsg, nil
 	}
-
-	return nil, nil, nil
+	if commitFlag == true {
+		return &CollateMsg{
+	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+	   		ViewID:		state.ViewID,
+	   		Digest:		state.MsgLogs.Digest,
+	   		NodeID:		"",
+	   		Signature:	"",
+	   		SequenceID:	state.SequenceID,
+	   		MsgType:	COMMITTED,
+		}, state.collateTimer == nil, nil
+	} else {
+		return nil, false, nil
+	}
 }
+func (state *State) Commit()(*ReplyMsg, *RequestMsg) {
+	return &ReplyMsg{
+		ViewID:    state.ViewID,
+		//Timestamp: state.MsgLogs.ReqMsg.Timestamp,
+		//ClientID:  state.MsgLogs.ReqMsg.ClientID,
+		Timestamp: 0,
+		ClientID: "",
+		// Nodes must execute the requested operation
+		// locally and assign the result into reply message,
+		// with considering their operation ordering policy.
+		Result: "",
+	}, state.MsgLogs.PrepareMsg.RequestMsg
+}
+func (State *State) Collating(){
 
+}
+func (state *State) SetBizantine(nodeID string) bool {
+	if state.BNode[nodeID] == 0{
+		state.BNode[nodeID] = 1
+		state.B += 1
+		return true
+	} else {
+		return false
+	}
+}
 func (state *State) GetSequenceID() int64 {
 	return state.SequenceID
-
-}
-
-func (state *State) GetDigest() string {
-	return state.digest
 }
 
 func (state *State) GetF() int {
@@ -238,18 +350,24 @@ func (state *State) GetMsgSendChannel() chan<- interface{} {
 }
 
 func (state *State) GetReqMsg() *RequestMsg {
-	return state.MsgLogs.ReqMsg
+	//return state.MsgLogs.ReqMsg
+	return state.MsgLogs.PrepareMsg.RequestMsg
 }
+func (state *State) GetPrepareMsg() *PrepareMsg {
+	return state.MsgLogs.PrepareMsg
+}
+func (state *State) GetVoteMsgs() map[string]*VoteMsg{
+	newMap := make(map[string]*VoteMsg)
 
-func (state *State) GetPrePrepareMsg() *PrePrepareMsg {
-	return state.MsgLogs.PrePrepareMsg
+	state.MsgLogs.VoteMsgsMutex.RLock()
+	for k, v := range state.MsgLogs.VoteMsgs {
+		newMap[k] = v
+	}
+	state.MsgLogs.VoteMsgsMutex.RUnlock()
+
+	return newMap
 }
-func (state *State) GetSuccChkPoint() int64 {
-	return state.succChkPointDelete
-}
-func (state *State) SetSuccChkPoint(num int64) {
-	state.succChkPointDelete = num
-}
+/*
 func (state *State) GetPrepareMsgs() map[string]*VoteMsg {
 	newMap := make(map[string]*VoteMsg)
 
@@ -261,7 +379,19 @@ func (state *State) GetPrepareMsgs() map[string]*VoteMsg {
 
 	return newMap
 }
+*/
+func (state *State) GetCollateMsgs() map[string]*CollateMsg {
+	newMap := make(map[string]*CollateMsg)
 
+	state.MsgLogs.CollateMsgsMutex.RLock()
+	for k, v := range state.MsgLogs.CollateMsgs {
+		newMap[k] = v
+	}
+	state.MsgLogs.CollateMsgsMutex.RUnlock()
+
+	return newMap
+}
+/*
 func (state *State) GetCommitMsgs() map[string]*VoteMsg {
 	newMap := make(map[string]*VoteMsg)
 
@@ -273,7 +403,49 @@ func (state *State) GetCommitMsgs() map[string]*VoteMsg {
 
 	return newMap
 }
-
+*/
+func (state *State) GetPhaseTimer(phase string) (*time.Timer){
+	switch phase {
+	case "Prepare":
+		return state.prepareTimer
+	case "Vote":
+		return state.voteTimer
+	case "Collate":
+		return state.collateTimer
+	case "ViewChange":
+		return state.viewchangeTimer
+	}
+	return nil
+}
+func (state *State) GetCancelTimerCh(phase string) (chan struct {}){
+	switch phase {
+	case "Prepare":
+		return state.prepareCanceled
+	case "Vote":
+		return state.voteCanceled
+	case "Collate":
+		return state.collateCanceled
+	case "ViewChange":
+		return state.viewchangeCanceled
+	}
+	return nil
+}
+func (state *State) SetTimer(phase string) {
+	switch phase {
+	case "Prepare":
+		state.prepareTimer = time.NewTimer(time.Millisecond * prepareSigma)
+		state.prepareCanceled = make(chan struct {})
+	case "Vote":
+		state.voteTimer = time.NewTimer(time.Millisecond * voteSigma)
+		state.voteCanceled = make(chan struct {})
+	case "Collate":
+		state.collateTimer = time.NewTimer(time.Millisecond * collateSigma)
+		state.collateCanceled = make(chan struct {})
+	case "Viewchange":
+		state.viewchangeTimer = time.NewTimer(time.Millisecond * vcSigma)
+		state.viewchangeCanceled = make(chan struct {})
+	}
+}
 func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) error {
 	// Wrong view. That is, wrong configurations of peers to start the consensus.
 	if state.ViewID != viewID {
@@ -284,9 +456,15 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 		return fmt.Errorf("state.SequenceID = %d, sequenceID = %d", state.SequenceID, sequenceID)
 	}
 
+	//digest, err := Digest(state.MsgLogs.ReqMsg)
+	//if err != nil {
+	//	return err
+	//}
+	digest := state.MsgLogs.Digest
+
 	// Check digest.
-	if state.digest != digestGot {
-		return fmt.Errorf("state.digest = %s, digestGot = %s", state.digest, digestGot)
+	if digestGot != digest {
+		return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
 	}
 
 	return nil
@@ -297,13 +475,19 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 // view v, and request m. We call this certificate the prepared certificate
 // and we say that the replica "prepared" the request.
 func (state *State) prepared() bool {
-	if state.MsgLogs.ReqMsg == nil || state.MsgLogs.PrePrepareMsg == nil {
-		return false
-	}
+	// Condition is that previous sequence thread has received prepare message...
+	// I think this can be proved by checking if the sequence thread is exists...
+	// So just pass!
 
-	if int(atomic.LoadInt32(&state.MsgLogs.TotalPrepareMsg)) < 2*state.F {
-		return false
-	}
+	//if state.MsgLogs.ReqMsg == nil || state.MsgLogs.PrePrepareMsg == nil {
+	//if state.MsgLogs.PrepareMsg == nil {
+	//	return false
+	//}
+
+	//if int(atomic.LoadInt32(&state.MsgLogs.TotalPrepareMsg)) < 2*state.F {
+	//if int(atomic.LoadInt32(&state.MsgLogs.TotalVoteMsg)) <= state.F - state.B {
+	//	return false
+	//}
 
 	return true
 }
@@ -318,7 +502,8 @@ func (state *State) committed() bool {
 		return false
 	}
 
-	if int(atomic.LoadInt32(&state.MsgLogs.TotalCommitMsg)) < 2*state.F + 1 {
+	//if int(atomic.LoadInt32(&state.MsgLogs.TotalCommitMsg)) < 2*state.F + 1 {
+	if int(atomic.LoadInt32(&state.MsgLogs.TotalCollateMsg)) <= state.F - state.B {
 		return false
 	}
 

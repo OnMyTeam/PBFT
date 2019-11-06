@@ -6,22 +6,21 @@ import (
 	"fmt"
 	"time"
 	//"errors"
-	"context"
+	//"context"
 	"sync"
 	"sync/atomic"
-	"crypto/ecdsa"
 )
+
+
 
 type Node struct {
 	MyInfo          *NodeInfo
-	PrivKey         *ecdsa.PrivateKey
 	NodeTable       []*NodeInfo
 	View            *View
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
-	VCState *consensus.VCState
+	//ViewChangeState *consensus.ViewChangeState
 	CommittedMsgs   []*consensus.RequestMsg // kinda block.
 	TotalConsensus  int64 // atomic. number of consensus started so far.
-	IsViewChanging  bool
 
 	// Channels
 	MsgEntrance   chan interface{}
@@ -29,24 +28,20 @@ type Node struct {
 	MsgExecution  chan *MsgPair
 	MsgOutbound   chan *MsgOut
 	MsgError      chan []error
-	ViewMsgEntrance chan interface{}
+	//ViewMsgEntrance chan interface{}
 
 	// Mutexes for preventing from concurrent access
 	StatesMutex sync.RWMutex
 
-	// Saved checkpoint messages on this node
-	// key: sequenceID, value: map(key: nodeID, value: checkpointMsg)
-	CheckPointMutex     sync.RWMutex
-	CheckPointMsgsLog   map[int64]map[string]*consensus.CheckPointMsg
-
-	// The stable checkpoint that 2f + 1 nodes agreed
-	StableCheckPoint    int64
+	// CheckpointMsg save
+	//StableCheckPoint    int64
+	//CheckPointSendPoint int64
+	//CheckPointMsgsLog   map[int64]map[string]*consensus.CheckPointMsg // key: sequenceID, value: map(key: nodeID, value: checkpointmsg)
 }
 
 type NodeInfo struct {
 	NodeID string `json:"nodeID"`
 	Url    string `json:"url"`
-	PubKey *ecdsa.PublicKey
 }
 
 type View struct {
@@ -65,11 +60,8 @@ type MsgOut struct {
 	Msg  []byte
 }
 
-// Number of parallel goroutines for resolving messages.
-const NumResolveMsgGo = 6
-
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 100
+const ConsensusDeadline = time.Millisecond * 1000
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -80,18 +72,16 @@ const CoolingTotalErrMsg = 5
 // Number of outbound connection for a node.
 const MaxOutboundConnection = 1000
 
-func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
+func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64) *Node {
 	node := &Node{
 		MyInfo:    myInfo,
-		PrivKey: decodePrivKey,
 		NodeTable: nodeTable,
 		View:      &View{},
-		IsViewChanging: false,
 
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),
 		CommittedMsgs:   make([]*consensus.RequestMsg, 0),
-		VCState: nil,
+		//ViewChangeState: nil,
 
 		// Channels
 		MsgEntrance: make(chan interface{}, len(nodeTable) * 3),
@@ -99,10 +89,11 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		MsgExecution: make(chan *MsgPair),
 		MsgOutbound: make(chan *MsgOut),
 		MsgError: make(chan []error),
-		ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),
+		//ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),
 
-		CheckPointMsgsLog: make(map[int64]map[string]*consensus.CheckPointMsg),
-		StableCheckPoint:  0,
+		//StableCheckPoint:  0,
+		//CheckPointSendPoint: 0,
+		//CheckPointMsgsLog: make(map[int64]map[string]*consensus.CheckPointMsg),
 	}
 
 	atomic.StoreInt64(&node.TotalConsensus, 0)
@@ -111,7 +102,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 	// Start message dispatcher
 	go node.dispatchMsg()
 
-	for i := 0; i < NumResolveMsgGo; i++ {
+	for i := 0; i < 5; i++ {
 		// Start message resolver
 		go node.resolveMsg()
 	}
@@ -139,8 +130,17 @@ func (node *Node) Broadcast(msg interface{}, path string) {
 	node.MsgOutbound <- &MsgOut{Path: node.MyInfo.Url + path, Msg: jsonMsg}
 }
 
+func (node *Node) Reply(msg *consensus.ReplyMsg) {
+	// Broadcast reply.
+	node.Broadcast(msg, "/reply")
+}
+/*
 // When REQUEST message is broadcasted, start consensus.
 func (node *Node) GetReq(reqMsg *consensus.RequestMsg) {
+	err := DecodeSig(reqMsg)
+	if err != nil {
+		return nil, err
+	}
 	LogMsg(reqMsg)
 	// Create a new state object.
 	state := node.createState(reqMsg.Timestamp)
@@ -148,149 +148,211 @@ func (node *Node) GetReq(reqMsg *consensus.RequestMsg) {
 	// Increment the number of request message atomically.
 	// TODO: Currently, StartConsensus must succeed.
 	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
-	prePrepareMsg := state.StartConsensus(reqMsg, newTotalConsensus)
+	//prePrepareMsg, _ := state.StartConsensus(reqMsg, newTotalConsensus)
+	prepareMsg, _ := state.StartConensus(reqMsg, newTotalConsensus)
 
 	// Register state into node and update last sequence number.
 	node.StatesMutex.Lock()
-	node.States[prePrepareMsg.SequenceID] = state
+	//node.States[prePrepareMsg.SequenceID] = state
+	node.States[prepareMsg.SequenceID] = state
 	node.StatesMutex.Unlock()
 
 	fmt.Printf("Consensus Process (ViewID: %d, SequenceID: %d)\n",
-	           prePrepareMsg.ViewID, prePrepareMsg.SequenceID)
+	//           prePrepareMsg.ViewID, prePrepareMsg.SequenceID)
+				 prepareMsg.ViewID, prepareMsg.SequenceID)
 
-	// Broadcast PrePrepare message.
+	// Broadcast Prepare message.
 	LogStage("Request", true)
 	if node.isMyNodePrimary() {
-		node.Broadcast(prePrepareMsg, "/preprepare")
+		//node.Broadcast(prePrepareMsg, "/preprepare")
+		prepareMsg.Signature = EncodeSig(prepareMsg)
+		node.Broadcast(prepareMsg, "/prepare")
 	}
-	LogStage("Pre-prepare", false)
+	LogStage("Prepare", false)
 
 	// From TOCS: The backups check the sequence numbers assigned by
 	// the primary and use timeouts to detect when it stops.
 	// They trigger view changes to select a new primary when it
 	// appears that the current one has failed.
-	// 
-	// Deadline is determined by the timestamp of the current node.
-	go node.startTransitionWithDeadline(state, time.Now().UnixNano())
+	go node.startTransitionWithDeadline(state, reqMsg.Timestamp)
 }
+*/
+func (node *Node) startTransitionWithDeadline() {
+	// Set deadline based on timestamp when the request message was created.
+	//sec := timeStamp / int64(time.Second)
+	//nsec := timeStamp % int64(time.Second)
+	//d := time.Unix(sec, nsec).Add(ConsensusDeadline)
+	//ctx, cancel := context.WithDeadline(context.Background(), d)
 
-func (node *Node) startTransitionWithDeadline(state consensus.PBFT, timeStamp int64) {
-	// Set deadline based on the given timestamp.
-	sec := timeStamp / int64(time.Second)
-	nsec := timeStamp % int64(time.Second)
-	d := time.Unix(sec, nsec).Add(ConsensusDeadline)
-	ctx, cancel := context.WithDeadline(context.Background(), d)
 
 	// Check the time is skewed.
-	timeDiff := time.Until(d).Nanoseconds()
-	fmt.Printf("The deadline for sequenceID %d is %d ms. (Skewed %d ms)\n",
-	           state.GetSequenceID(),
-	           timeDiff / int64(time.Millisecond),
-	           (ConsensusDeadline.Nanoseconds() - timeDiff) / int64(time.Millisecond))
+	//timeDiff := time.Until(d).Nanoseconds()
+	//fmt.Printf("The deadline for sequenceID %d is %d ms. (Skewed %d ms)\n",
+	//           state.GetSequenceID(),
+	//           timeDiff / int64(time.Millisecond),
+	//           (ConsensusDeadline.Nanoseconds() - timeDiff) / int64(time.Millisecond))
+	
+	// Increment the number of request message atomically.
+	// TODO: Currently, StartConsensus must succeed.
+	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
+	fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)
+	//fmt.Printf("Consensus Process (ViewID: %d, SequenceID: %d)\n",
+	//			prepareMsg.ViewID, prepareMsg.SequenceID)
 
-	defer cancel()
+	// Create a new state object.
+	state := node.createState(newTotalConsensus)
+	
+	//defer cancel()
+
+	node.TimerStart(state, "Prepare")
+ 	node.TimerStart(state, "ViewChange")
 
 	// The node can receive messages for any consensus stage,
 	// regardless of the current stage for the state.
 	ch := state.GetMsgReceiveChannel()
-
 	for {
 		select {
 		case msgState := <-ch:
 			switch msg := msgState.(type) {
-			case *consensus.PrePrepareMsg:
-				node.GetPrePrepare(state, msg)
+			//case *consensus.PrePrepareMsg:
+			//	node.GetPrePrepare(state, msg)
+			case *consensus.PrepareMsg:
+				node.GetPrepare(state, msg)
 			case *consensus.VoteMsg:
-				if msg.MsgType == consensus.PrepareMsg {
-					node.GetPrepare(state, msg)
-				} else if msg.MsgType == consensus.CommitMsg {
-					node.GetCommit(state, msg)
-				}
+				node.GetVote(state, msg)
+			case *consensus.CollateMsg:
+				node.GetCollate(state, msg)
 			}
-		case <-ctx.Done():
+		//case <-ctx.Done():
 			// Check the consensus of the current state precedes
 			// that of the last committed message in this node.
-			var lastCommittedMsg *consensus.RequestMsg = nil
-			msgTotalCnt := len(node.CommittedMsgs)
-			if msgTotalCnt > 0 {
-				lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
-			}
-
-			if msgTotalCnt == 0 ||
-			   lastCommittedMsg.SequenceID < state.GetSequenceID() {
-				//startviewchange
-				fmt.Println("IsViewchanging = true")
-				node.IsViewChanging = true
+			//msgTotalCnt := len(node.CommittedMsgs)
+			//msgTotalCnt := len(node.CollateMsgs)
+			//lastCommittedMsg := node.CommittedMsgs[msgTotalCnt - 1]
+			//lastCollatedMsg := node.CollatedMsgs[msgTotalCnt - 1]
+			//if lastCommittedMsg.SequenceID < state.GetSequenceID() {
+			//if lastCollatedMsg.SequenceID < state.GetSequenceID(){
 				// Broadcast view change message.
-				node.MsgError <- []error{ctx.Err()}
-				node.StartViewChange()
-			}
-			return
+				//node.MsgError <- []error{ctx.Err()}
+				//node.StartViewChange()
+			//}
+			//return
 		}
 	}
 }
 
-func (node *Node) GetPrePrepare(state consensus.PBFT, prePrepareMsg *consensus.PrePrepareMsg) {
-	// TODO: From TOCS: sequence number n is between a low water mark h
-	// and a high water mark H. The last condition is necessary to enable
-	// garbage collection and to prevent a faulty primary from exhausting
-	// the space of sequence numbers by selecting a very large one.
+func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.PrepareMsg) {
+	if(prepareMsg != nil) {
+		if consensus.DecodeSig(prepareMsg) == false {
+			return
+		}
+	}
 
-	prepareMsg, err := state.PrePrepare(prePrepareMsg)
+	voteMsg, err := state.Prepare(prepareMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
 
-	// Check PREPARE message created.
-	if prepareMsg == nil {
+	//Check VoteMsg created
+	if voteMsg == nil {
 		return
 	}
+	
+	// Attach node ID to the message
+	voteMsg.NodeID = node.MyInfo.NodeID
+	voteMsg.Signature = consensus.EncodeSig(voteMsg)
 
-	// Attach node ID to the message.
-	prepareMsg.NodeID = node.MyInfo.NodeID
-
-	LogStage("Pre-prepare", true)
-	node.Broadcast(prepareMsg, "/prepare")
-	LogStage("Prepare", false)
-
-	// Step next.
-	node.GetPrepare(state, prepareMsg)
-}
-
-func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.VoteMsg) {
-	commitMsg, err := state.Prepare(prepareMsg)
-	if err != nil {
-		node.MsgError <- []error{err}
-	}
-
-	// Check COMMIT message created.
-	if commitMsg == nil {
-		return
-	}
-
-	// Attach node ID to the message.
-	commitMsg.NodeID = node.MyInfo.NodeID
+	node.TimerStop(state, "Prepare") 
+	node.TimerStart(state, "Vote")
 
 	LogStage("Prepare", true)
-	node.Broadcast(commitMsg, "/commit")
-	LogStage("Commit", false)
+	node.Broadcast(voteMsg, "/vote")
+	LogStage("Vote", false)
 
-	// Step next.
-	node.GetCommit(state, commitMsg)
+
+	// From TOCS: The backups check the sequence numbers assigned by
+	// the primary and use timeouts to detect when it stops.
+	// They trigger view changes to select a new primary when it
+	// appears that the current one has failed.
+	go node.startTransitionWithDeadline()
+
 }
+func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
+	if consensus.DecodeSig(voteMsg) == false {
+		return 
+	}
 
-func (node *Node) GetCommit(state consensus.PBFT, commitMsg *consensus.VoteMsg) {
-	replyMsg, committedMsg, err := state.Commit(commitMsg)
+	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
 
-	// Check REPLY message created.
-	if replyMsg == nil {
+	// Check COLLATE message created.
+	if collateMsg == nil {
 		return
 	}
 
-	// Attach node ID to the message.
+	// Attach node ID to the message
+	collateMsg.NodeID = node.MyInfo.NodeID
+	collateMsg.Signature = consensus.EncodeSig(collateMsg)
+
+	switch collateMsg.MsgType {
+	case consensus.COMMITTED:
+		// Commit the Msg..
+		replyMsg, committedMsg := state.Commit()
+		// Attach node ID to the message
+		replyMsg.NodeID = node.MyInfo.NodeID
+
+		// Pass the incomplete reply message through MsgExecution
+		// channel to run its operation sequentially.
+		node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
+
+		node.TimerStop(state, "Vote")
+
+		LogStage("Vote", true)
+		node.Broadcast(collateMsg, "/collate")
+		LogStage("Collate", false)
+
+		//Done
+	case consensus.UNCOMMITTED:
+		node.TimerStart(state, "Collate")
+
+		LogStage("Vote", true)
+		node.Broadcast(collateMsg, "/collate")
+		LogStage("commit", false)
+	}
+}
+func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
+	if consensus.DecodeSig(collateMsg) == false {
+		return
+	}
+
+	newcollateMsg,isVoting, err := state.Collate(collateMsg)
+	if err != nil {
+		node.MsgError <- []error{err}
+	}
+
+	if newcollateMsg == nil { 	//Only COMMITTED msg is created
+		return
+	}
+
+	if isVoting {		// vote timer is running.. collate timer is not running..
+		node.TimerStop(state, "Vote")
+	} else {							// vote timer is not running.. collate timer is running..
+		node.TimerStop(state, "Collate")
+	}
+
+	// Attach node ID to the message
+	newcollateMsg.NodeID = node.MyInfo.NodeID
+	newcollateMsg.Signature = consensus.EncodeSig(collateMsg)
+
+	LogStage("collate", true)
+	node.Broadcast(newcollateMsg, "/collate")
+	LogStage("commit", false)
+
+	replyMsg, committedMsg := state.Commit()
+
+	// Attach node ID to the message
 	replyMsg.NodeID = node.MyInfo.NodeID
 
 	// Pass the incomplete reply message through MsgExecution
@@ -314,53 +376,41 @@ func (node *Node) dispatchMsg() {
 	for {
 		select {
 		case msg := <-node.MsgEntrance:
-			if !node.IsViewChanging {
-				node.routeMsg(msg)
-			}
-		case viewmsg := <-node.ViewMsgEntrance:
-			node.routeMsg(viewmsg)
+			node.routeMsg(msg)
+		//case viewmsg := <-node.ViewMsgEntrance:
+		//	fmt.Println("dispatchMsg()")
+		//	node.routeMsg(viewmsg)
 		}
 	}
 }
 
 func (node *Node) routeMsg(msgEntered interface{}) {
 	switch msg := msgEntered.(type) {
-	case *consensus.RequestMsg:
-		node.MsgDelivery <- msg
-	case *consensus.PrePrepareMsg:
-		// Receive pre-prepare message only if 1. the node is not primary,
-		// and 2. stable checkpoint for this node is lower than
-		// sequence number of this message.
-		if !node.isMyNodePrimary() &&
-		   node.StableCheckPoint <= msg.SequenceID {
+	// Messages are broadcasted from the node, so
+	// the message sent to itself can exist.
+	case *consensus.PrepareMsg:
+		//if !node.isMyNodePrimary() {
+		if node.MyInfo.NodeID != msg.NodeID{
 			node.MsgDelivery <- msg
 		}
 	case *consensus.VoteMsg:
-		// Messages are broadcasted from the node, so
-		// the message sent to itself can exist.
-		// Skip the message if stable checkpoint for this node is
-		// lower than sequence number of this message.
-		if node.MyInfo.NodeID != msg.NodeID &&
-		   node.StableCheckPoint <= msg.SequenceID {
+		if node.MyInfo.NodeID != msg.NodeID {
+			node.MsgDelivery <- msg
+		}
+	case *consensus.CollateMsg:
+		if node.MyInfo.NodeID != msg.NodeID {
 			node.MsgDelivery <- msg
 		}
 	case *consensus.ReplyMsg:
 		node.MsgDelivery <- msg
+	/*
+	case *consensus.CheckPointMsg:
+		node.MsgDelivery <- msg
 	case *consensus.ViewChangeMsg:
 		node.MsgDelivery <- msg
-	}
-
-	// Messages are broadcasted from the node, so
-	// the message sent to itself can exist.
-	switch msg := msgEntered.(type) {
-	case *consensus.CheckPointMsg:
-		if node.MyInfo.NodeID != msg.NodeID {
-			node.MsgDelivery <- msg
-		}
 	case *consensus.NewViewMsg:
-		if node.MyInfo.NodeID != msg.NodeID {
-			node.MsgDelivery <- msg
-		}
+		node.MsgDelivery <- msg
+		*/
 	}
 }
 
@@ -372,9 +422,11 @@ func (node *Node) resolveMsg() {
 
 		// Resolve the message.
 		switch msg := msgDelivered.(type) {
-		case *consensus.RequestMsg:
-			node.GetReq(msg)
-		case *consensus.PrePrepareMsg:
+		// If even the previous sequence of entered sequence thread is not created
+		// ignore the entered message.
+		case *consensus.PrepareMsg:
+			//state, err = node.getState(msg.SequenceID)
+			//if state != nil {
 			state, err = node.getState(msg.SequenceID)
 			if state != nil {
 				ch := state.GetMsgSendChannel()
@@ -386,14 +438,22 @@ func (node *Node) resolveMsg() {
 				ch := state.GetMsgSendChannel()
 				ch <- msg
 			}
+		case *consensus.CollateMsg:
+			state, err = node.getState(msg.SequenceID)
+			if state != nil {
+				ch := state.GetMsgSendChannel()
+				ch <- msg
+			}
 		case *consensus.ReplyMsg:
 			node.GetReply(msg)
+		/*
 		case *consensus.CheckPointMsg:
 			node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
-			node.GetViewChange(msg)
+			err = node.GetViewChange(msg)
 		case *consensus.NewViewMsg:
 			err = node.GetNewView(msg)
+		*/
 		}
 
 		if err != nil {
@@ -418,27 +478,17 @@ func (node *Node) executeMsg() {
 		pairs[msgPair.committedMsg.SequenceID] = msgPair
 		committedMsgs = make([]*consensus.RequestMsg, 0)
 
-		// if msg with sequence number n is already executed, skip to send a reply of the msg with n
-		var isExecuted bool = false
-		for _, cmsg := range node.CommittedMsgs {
-			if cmsg.SequenceID == msgPair.committedMsg.SequenceID {
-				isExecuted = true
-		break
-			}
-		}
-		if isExecuted {
-			continue
-		}
-
 		// Execute operation for all the consecutive messages.
 		for {
-			var lastSequenceID int64 = 0
+			var lastSequenceID int64
 
 			// Find the last committed message.
 			msgTotalCnt := len(node.CommittedMsgs)
 			if msgTotalCnt > 0 {
 				lastCommittedMsg := node.CommittedMsgs[msgTotalCnt - 1]
 				lastSequenceID = lastCommittedMsg.SequenceID
+			} else {
+				lastSequenceID = 0
 			}
 
 			// Stop execution if the message for the
@@ -460,34 +510,31 @@ func (node *Node) executeMsg() {
 			// corresponding committed message to node.
 			node.CommittedMsgs = append(node.CommittedMsgs, p.committedMsg)
 
-			// Broadcast reply.
-			node.Broadcast(p.replyMsg, "/reply")
-			LogStage("Reply", true)
+			node.Reply(p.replyMsg)
 
-			// Create checkpoint every `periodCheckPoint` committed message.
-			if (lastSequenceID + 1) % periodCheckPoint == 0 {
+			LogStage("Reply", true)
+			/*
+			nCheckPoint := node.CheckPointSendPoint + periodCheckPoint
+			msgTotalCnt1 := len(node.CommittedMsgs)
+
+			if node.CommittedMsgs[msgTotalCnt1 - 1].SequenceID ==  nCheckPoint{
+				node.CheckPointSendPoint = nCheckPoint
+
+				SequenceID := node.CommittedMsgs[len(node.CommittedMsgs) - 1].SequenceID
+				checkPointMsg, _ := node.getCheckPointMsg(SequenceID, node.MyInfo.NodeID, node.CommittedMsgs[msgTotalCnt1 - 1])
 				LogStage("CHECKPOINT", false)
-				// Send CHECKPOINT message until it is possible.
-				for sequenceid := node.StableCheckPoint;
-				    sequenceid < lastSequenceID + 1;
-				    sequenceid += periodCheckPoint {
-					if !node.CheckPointMissCheck(sequenceid) {
-						break
-					}
-					checkPointMsg := node.createCheckPointMsg(sequenceid + periodCheckPoint, node.MyInfo.NodeID)
-					node.Broadcast(checkPointMsg, "/checkpoint")
-					node.CheckPoint(checkPointMsg)
-				}
+				node.Broadcast(checkPointMsg, "/checkpoint")
+				node.CheckPoint(checkPointMsg)
 			}
 
 			delete(pairs, lastSequenceID + 1)
+			*/
 		}
 
 		// Print all committed messages.
 		for _, v := range committedMsgs {
-			state, _ := node.getState(v.SequenceID) // Must succeed.
-			digest := state.GetDigest()
-			fmt.Printf("***committedMsgs[%d]: clientID=%s, operation=%s, timestamp=%d, ReqMsg (digest)=%s***\n",
+			digest, _ := consensus.Digest(v.Data)
+			fmt.Printf("***committedMsgs[%d]: clientID=%s, operation=%s, timestamp=%d, data(digest)=%s***\n",
 			           v.SequenceID, v.ClientID, v.Operation, v.Timestamp, digest)
 		}
 	}
@@ -507,7 +554,7 @@ func (node *Node) sendMsg() {
 
 			// Goroutine for concurrent broadcast()
 			go func() {
-				broadcast(errCh, msg.Path, msg.Msg, node.PrivKey)
+				broadcast(errCh, msg.Path, msg.Msg)
 			}()
 
 			select {
@@ -549,4 +596,19 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 	}
 
 	return state, nil
+}
+func (node *Node) TimerStart(state consensus.PBFT, phase string) {
+	state.SetTimer(phase)
+	go func() {
+		select {
+		case <- state.GetPhaseTimer(phase).C:
+			node.GetPrepare(state, nil)
+		case <- state.GetCancelTimerCh(phase):
+			fmt.Println(phase + "Timer Stopped")
+		}
+	}()
+}
+func (node *Node) TimerStop(state consensus.PBFT, phase string) {
+	state.GetPhaseTimer(phase).Stop()
+	state.GetCancelTimerCh(phase) <- struct {}{}
 }

@@ -1,14 +1,14 @@
-// OSDI style view change.
-
 package consensus
-
+/*
 import(
 	"fmt"
 	"sync"
 	"sync/atomic"
 )
 
-type VCState struct {
+const one = 1
+
+type ViewChangeState struct {
 	NextViewID         int64
 	ViewChangeMsgLogs   *ViewChangeMsgLogs
 	NodeID		   string
@@ -20,24 +20,24 @@ type VCState struct {
 	f int
 }
 
-type ViewChangeMsgLogs struct {
-	// key: nodeID, value: VIEW-CHANGE message
-	ViewChangeMsgs map[string]*ViewChangeMsg
-	TotalViewChangeMsg  int32
-	ViewChangeMsgMutex sync.RWMutex
 
-	// Flags whether VIEW-CHANGE message has broadcasted.
-	// Its value is atomically swapped by CompareAndSwapInt32.
-	msgSent   int32 // atomic bool
+type ViewChangeMsgLogs struct {
+	ViewChangeMsgs map[string]*ViewChangeMsg
+
+	TotalViewChangeMsg  int32
+
+	ViewChangeMsgMutex sync.Mutex
 }
 
-func CreateViewChangeState(nodeID string, totNodes int, nextviewID int64, stablecheckpoint int64) *VCState {
-	return &VCState{
+
+
+func CreateViewChangeState(nodeID string, totNodes int, nextviewID int64, stablecheckpoint int64) *ViewChangeState {
+	return &ViewChangeState{
 		NextViewID: nextviewID,
 		ViewChangeMsgLogs: &ViewChangeMsgLogs{
 			ViewChangeMsgs:make(map[string]*ViewChangeMsg),
+
 			TotalViewChangeMsg: 0,
-			msgSent: 0,
 		},
 		NodeID : nodeID,
 		StableCheckPoint: stablecheckpoint,
@@ -46,46 +46,65 @@ func CreateViewChangeState(nodeID string, totNodes int, nextviewID int64, stable
 	}
 }
 
-func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error) {
-	// TODO: verify VIEW-CHANGE message.
 
-	// Append VIEW-CHANGE message to its logs.
-	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Lock()
-        if _, ok := vcs.ViewChangeMsgLogs.ViewChangeMsgs[viewchangeMsg.NodeID]; ok {
-                fmt.Printf("View-change message from %s is already received, next view number=%d\n",
-                           viewchangeMsg.NodeID, vcs.NextViewID)
-		vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Unlock()
-                return nil, nil
-        }
-	vcs.ViewChangeMsgLogs.ViewChangeMsgs[viewchangeMsg.NodeID] = viewchangeMsg
-	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Unlock()
-	newTotalViewchangeMsg := atomic.AddInt32(&vcs.ViewChangeMsgLogs.TotalViewChangeMsg, 1)
+func (viewchangestate *ViewChangeState) CreateViewChangeMsg(setp map[int64]*SetPm) (*ViewChangeMsg, error) {
 
-	// Print current voting status.
-	fmt.Printf("[View-Change-Vote]: %d\n", newTotalViewchangeMsg)
+	return &ViewChangeMsg{
+		NodeID: viewchangestate.NodeID,
+		NextViewID: viewchangestate.NextViewID,
+		StableCheckPoint: viewchangestate.StableCheckPoint,
+		SetP: setp,
+	}, nil
 
-	// Return NEW-VIEW message only once.
-	if int(newTotalViewchangeMsg) >= 2*vcs.f + 1 &&
-	   atomic.CompareAndSwapInt32(&vcs.ViewChangeMsgLogs.msgSent, 0, 1) {
+
+
+	return nil, nil
+}
+
+
+func (viewchangestate *ViewChangeState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error) {
+
+	//TODO: verify viewchangeMsg
+
+	//check received viewchangeMsg SetP
+	fmt.Println("**************a set of SetP!!!******************")
+	for v, _ := range viewchangeMsg.SetP {
+		fmt.Println("    === > Preprepare : ", viewchangeMsg.SetP[v].PrePrepareMsg)
+		fmt.Println("    === > Prepare : ", viewchangeMsg.SetP[v].PrepareMsgs)
+	}
+
+	// Append msg to its logs
+	viewchangestate.ViewChangeMsgLogs.ViewChangeMsgMutex.Lock()
+	viewchangestate.ViewChangeMsgLogs.ViewChangeMsgs[viewchangeMsg.NodeID] = viewchangeMsg
+	viewchangestate.ViewChangeMsgLogs.ViewChangeMsgMutex.Unlock()
+	newTotalViewchangeMsg := atomic.AddInt32(&viewchangestate.ViewChangeMsgLogs.TotalViewChangeMsg,1)
+
+	// Print current voting status
+	fmt.Printf("[<<<<<<<<ViewChange-Vote>>>>>>>>>>]: %d\n", newTotalViewchangeMsg)
+
+
+	if int(newTotalViewchangeMsg) > 2*viewchangestate.f {
+		return nil, nil
+	}
+
+	if viewchangestate.viewchanged() {
+		
 		return &NewViewMsg{
-			NextViewID: vcs.NextViewID,
-			NodeID: vcs.NodeID,
-			SetViewChangeMsgs: vcs.GetViewChangeMsgs(),
-			SetPrePrepareMsgs: nil,
+			NextViewID: viewchangestate.NextViewID,
+			NodeID : viewchangestate.NodeID,
 		}, nil
+		
 	}
 
 	return nil, nil
 }
 
-func (vcs *VCState) GetViewChangeMsgs() map[string]*ViewChangeMsg {
-	newMap := make(map[string]*ViewChangeMsg)
 
-	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.RLock()
-	for k, v := range vcs.ViewChangeMsgLogs.ViewChangeMsgs {
-		newMap[k] = v
+func (viewchangestate *ViewChangeState) viewchanged() bool {
+	if len(viewchangestate.ViewChangeMsgLogs.ViewChangeMsgs) < 2*viewchangestate.f {
+		return false
 	}
-	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.RUnlock()
 
-	return newMap
+	return true
 }
+*/
