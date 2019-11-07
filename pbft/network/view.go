@@ -149,7 +149,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// Change View and Primary
 	node.updateView(newviewMsg.NextViewID)
-
+	node.StableCheckPoint = newviewMsg.Min_S
 	// Fill missing states and messages
 	node.FillHole(newviewMsg)
 
@@ -187,7 +187,18 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		}
 	}
 	fmt.Println("committedMax : ", committedMax)
-
+	for committedMax < newviewMsg.Min_S {
+		var request consensus.RequestMsg
+		newSequenceID := committedMax + 1
+		request.SequenceID = newSequenceID
+		request.Operation = ""
+		request.Timestamp = int64(0)
+		request.Data = ""
+		request.ClientID = ""
+		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
+		node.CommittedMsgs = append(node.CommittedMsgs, &request)
+		committedMax += 1
+	}
 	// if highest sequence number of received request and state is lower than min-s,
 	// node.TotalConsensus be added util min-s - 1
 	for node.TotalConsensus < newviewMsg.Min_S {
@@ -213,7 +224,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		if state != nil {
 			// Fill the committedMax if it is not committed
 			if seq > committedMax {
-				fmt.Println("no request in node.CommittedMsgs")
+				fmt.Println("no request in node.CommittedMsgs : ", seq)
 				node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
 			}
 			// Initalize all of logs of this state
@@ -235,7 +246,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 			request.Data = ""
 			request.ClientID = ""
 			state.SetReqMsg(&request)
-
+			fmt.Println("no request in node.CommittedMsgs : ", seq)
 			// Fill request message in the committedMax
 			node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
 			// Change the viewid, preprepare message and preprepare message's digest of the state
