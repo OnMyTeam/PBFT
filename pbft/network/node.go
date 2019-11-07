@@ -7,6 +7,7 @@ import (
 	"time"
 	//"errors"
 	//"context"
+	"log"
 	"sync"
 	"sync/atomic"
 )
@@ -134,50 +135,7 @@ func (node *Node) Reply(msg *consensus.ReplyMsg) {
 	// Broadcast reply.
 	node.Broadcast(msg, "/reply")
 }
-/*
-// When REQUEST message is broadcasted, start consensus.
-func (node *Node) GetReq(reqMsg *consensus.RequestMsg) {
-	err := DecodeSig(reqMsg)
-	if err != nil {
-		return nil, err
-	}
-	LogMsg(reqMsg)
-	// Create a new state object.
-	state := node.createState(reqMsg.Timestamp)
-
-	// Increment the number of request message atomically.
-	// TODO: Currently, StartConsensus must succeed.
-	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
-	//prePrepareMsg, _ := state.StartConsensus(reqMsg, newTotalConsensus)
-	prepareMsg, _ := state.StartConensus(reqMsg, newTotalConsensus)
-
-	// Register state into node and update last sequence number.
-	node.StatesMutex.Lock()
-	//node.States[prePrepareMsg.SequenceID] = state
-	node.States[prepareMsg.SequenceID] = state
-	node.StatesMutex.Unlock()
-
-	fmt.Printf("Consensus Process (ViewID: %d, SequenceID: %d)\n",
-	//           prePrepareMsg.ViewID, prePrepareMsg.SequenceID)
-				 prepareMsg.ViewID, prepareMsg.SequenceID)
-
-	// Broadcast Prepare message.
-	LogStage("Request", true)
-	if node.isMyNodePrimary() {
-		//node.Broadcast(prePrepareMsg, "/preprepare")
-		prepareMsg.Signature = EncodeSig(prepareMsg)
-		node.Broadcast(prepareMsg, "/prepare")
-	}
-	LogStage("Prepare", false)
-
-	// From TOCS: The backups check the sequence numbers assigned by
-	// the primary and use timeouts to detect when it stops.
-	// They trigger view changes to select a new primary when it
-	// appears that the current one has failed.
-	go node.startTransitionWithDeadline(state, reqMsg.Timestamp)
-}
-*/
-func (node *Node) startTransitionWithDeadline() {
+func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 	// Set deadline based on timestamp when the request message was created.
 	//sec := timeStamp / int64(time.Second)
 	//nsec := timeStamp % int64(time.Second)
@@ -194,18 +152,24 @@ func (node *Node) startTransitionWithDeadline() {
 	
 	// Increment the number of request message atomically.
 	// TODO: Currently, StartConsensus must succeed.
-	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
-	fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)
 	//fmt.Printf("Consensus Process (ViewID: %d, SequenceID: %d)\n",
 	//			prepareMsg.ViewID, prepareMsg.SequenceID)
-
-	// Create a new state object.
+	//if node.TotalConsensus != 0{
+	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
+	fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)
 	state := node.createState(newTotalConsensus)
-	
+	node.States[newTotalConsensus] = state
 	//defer cancel()
 
-	node.TimerStart(state, "Prepare")
- 	node.TimerStart(state, "ViewChange")
+	//if node.TotalConsensus != 0 {
+	if msg == nil{
+		log.Printf("sequence no %d thread is made!", newTotalConsensus)
+		node.TimerStart(state, "Prepare")
+	 	node.TimerStart(state, "ViewChange")
+	} else {
+		node.TimerStart(state, "ViewChange")
+		node.GetPrepare(state, msg)
+	}
 
 	// The node can receive messages for any consensus stage,
 	// regardless of the current stage for the state.
@@ -242,6 +206,7 @@ func (node *Node) startTransitionWithDeadline() {
 }
 
 func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.PrepareMsg) {
+	log.Printf("GetPrepare executed!!")
 	if(prepareMsg != nil) {
 		if consensus.DecodeSig(prepareMsg) == false {
 			return
@@ -262,22 +227,25 @@ func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.Prepare
 	voteMsg.NodeID = node.MyInfo.NodeID
 	voteMsg.Signature = consensus.EncodeSig(voteMsg)
 
-	node.TimerStop(state, "Prepare") 
+	if prepareMsg.SequenceID != 1 {
+		node.TimerStop(state, "Prepare")
+	} 
 	node.TimerStart(state, "Vote")
 
 	LogStage("Prepare", true)
 	node.Broadcast(voteMsg, "/vote")
 	LogStage("Vote", false)
-
+	//log.Printf("%s is broadcasts vote msg!!", node.MyInfo.NodeID)
 
 	// From TOCS: The backups check the sequence numbers assigned by
 	// the primary and use timeouts to detect when it stops.
 	// They trigger view changes to select a new primary when it
 	// appears that the current one has failed.
-	go node.startTransitionWithDeadline()
+	go node.startTransitionWithDeadline(nil)
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
+	log.Printf("GetVote executed!!")
 	if consensus.DecodeSig(voteMsg) == false {
 		return 
 	}
@@ -390,9 +358,9 @@ func (node *Node) routeMsg(msgEntered interface{}) {
 	// the message sent to itself can exist.
 	case *consensus.PrepareMsg:
 		//if !node.isMyNodePrimary() {
-		if node.MyInfo.NodeID != msg.NodeID{
-			node.MsgDelivery <- msg
-		}
+		//if node.MyInfo.NodeID != msg.NodeID{
+		node.MsgDelivery <- msg
+		//}
 	case *consensus.VoteMsg:
 		if node.MyInfo.NodeID != msg.NodeID {
 			node.MsgDelivery <- msg
@@ -419,24 +387,28 @@ func (node *Node) resolveMsg() {
 		var state consensus.PBFT
 		var err error = nil
 		msgDelivered := <-node.MsgDelivery
-
 		// Resolve the message.
 		switch msg := msgDelivered.(type) {
 		// If even the previous sequence of entered sequence thread is not created
 		// ignore the entered message.
 		case *consensus.PrepareMsg:
-			//state, err = node.getState(msg.SequenceID)
-			//if state != nil {
-			state, err = node.getState(msg.SequenceID)
-			if state != nil {
-				ch := state.GetMsgSendChannel()
-				ch <- msg
+			if msg.SequenceID == 1{		//Genesis Message
+				log.Printf("%s resolving genesis message!!", node.MyInfo.NodeID)
+				node.startTransitionWithDeadline(msg)
+			} else {
+				state, err = node.getState(msg.SequenceID)
+				if state != nil {
+					ch := state.GetMsgSendChannel()
+					ch <- msg
+				}
 			}
 		case *consensus.VoteMsg:
 			state, err = node.getState(msg.SequenceID)
 			if state != nil {
 				ch := state.GetMsgSendChannel()
 				ch <- msg
+			} else {
+				log.Printf("state %d is not exists", msg.SequenceID)
 			}
 		case *consensus.CollateMsg:
 			state, err = node.getState(msg.SequenceID)
@@ -598,17 +570,18 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 	return state, nil
 }
 func (node *Node) TimerStart(state consensus.PBFT, phase string) {
+	//log.Printf("%s Timer start function.. phase is %s", node.MyInfo.NodeID,phase)
 	state.SetTimer(phase)
 	go func() {
 		select {
-		case <- state.GetPhaseTimer(phase).C:
-			node.GetPrepare(state, nil)
-		case <- state.GetCancelTimerCh(phase):
-			fmt.Println(phase + "Timer Stopped")
+		case <-state.GetPhaseTimer(phase).C:
+			//node.GetPrepare(state, nil)
+		case <-state.GetCancelTimerCh(phase):
 		}
 	}()
 }
 func (node *Node) TimerStop(state consensus.PBFT, phase string) {
+	//log.Printf("%s Timer stop function.. phase is %s", node.MyInfo.NodeID,phase)
 	state.GetPhaseTimer(phase).Stop()
 	state.GetCancelTimerCh(phase) <- struct {}{}
 }

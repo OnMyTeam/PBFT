@@ -8,14 +8,11 @@ type RequestMsg struct {
 	Operation  string `json:"operation"`
 	Data       string `json:"data"`
 	SequenceID int64  `json:"sequenceID"`
-	//Adaptive BFT
-	NodeID     int64  `json:"nodeID"`
-	Signature  string `json:"signature"`
 }
 
 type ReplyMsg struct {
 	ViewID    int64  `json:"viewID"`
-	Timestamp int64  `json:"timestamp"` // same timestamp value as RequestMsg
+	Timestamp int64  `json:"timestamp"`
 	ClientID  string `json:"clientID"`
 	NodeID    string `json:"nodeID"`
 	Result    string `json:"result"`
@@ -27,37 +24,35 @@ type PrepareMsg struct {
 	SequenceID int64       `json:"sequenceID"`
 	RequestMsg *RequestMsg `json:"requestMsg"`
 	Digest     string      `json:"digest"`
-	//Adaptive BFT
-	EpochID 	int64      `json:"epochID"`		//epoch
+	EpochID 	int64      `json:"epochID"`
 	NodeID      string     `json:"nodeID"`
 	Signature 	string 	   `json:"signature"`
 }
 
 
 type VoteMsg struct {
-	ViewID     int64  `json:"viewID"`
-	SequenceID int64  `json:"sequenceID"`
-	Digest     string `json:"digest"` // COMMIT message does not have digest
-	NodeID     string `json:"nodeID"`
-	MsgType           `json:"msgType"`
-	//Adaptive BFT
-	PrepareMsg 	*PrepareMsg `json:"prepareMsg"`		//prepare msg
+	ViewID     int64  		`json:"viewID"`
+	SequenceID int64  		`json:"sequenceID"`
+	Digest     string 		`json:"digest"`
+	NodeID     string 		`json:"nodeID"`
+	MsgType           		`json:"msgType"`
+	PrepareMsg 	*PrepareMsg `json:"prepareMsg"`
 	Signature 	string      `json:"signature"`
 }
 
 //Adaptive BFT
 type CollateMsg struct {
-	ReceivedPrepare		*PrepareMsg
-	ReceivedVoteMsg     map[string]*VoteMsg `json:"commit_proof"`	//commit proof
-	SentVoteMsg         *VoteMsg   `json:"sent_vote_msg"`	//vote msgs that i sent
-	ViewID              int64      `json:"viewID"`
-	SequenceID          int64      `json:"sequenceID"`
-	Digest              string     `json:"digest"`
-	MsgType                        `json:"msgType"`
-	NodeID              string     `json:"nodeID"`
-	Signature           string     `json:"signature"`
+	ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
+	ReceivedVoteMsg     map[string]*VoteMsg `json:"commit_proof"`
+	SentVoteMsg         *VoteMsg   			`json:"sent_vote_msg"`
+	ViewID              int64      			`json:"viewID"`
+	SequenceID          int64      			`json:"sequenceID"`
+	Digest              string     			`json:"digest"`
+	MsgType                        			`json:"msgType"`
+	NodeID              string     			`json:"nodeID"`
+	Signature           string     			`json:"signature"`
 }
-
+/*
 type CheckPointMsg struct {
 	SequenceID int64  `json:"sequenceID"`
 	Digest     string `json:"digest"`
@@ -88,7 +83,7 @@ type NewViewMsg struct {
 	//O a set of PrePrepareMsgs from latest stable checkpoint(min-s) in V to the highest sequence number(max-s) in a PrepareMsg in V
 	//  new Primary creates a new PrePrepareMsg for view v+1 for each sequence number between min-s and max-s
 }
-
+*/
 type MsgType int
 const (
 	//PrepareMsg MsgType = iota

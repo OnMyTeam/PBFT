@@ -6,7 +6,6 @@ import (
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/url"
-
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"encoding/json"
 	"log"
@@ -43,15 +42,15 @@ func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64) *Server {
 	server.setRoute("/commit")
 	server.setRoute("/reply")
 	*/
-	server.setRoute("/req")
+	//server.setRoute("/req")
 	server.setRoute("/reply")
 	server.setRoute("/prepare")
 	server.setRoute("/vote")
 	server.setRoute("/collate")
 	// View change.
-	server.setRoute("/checkpoint")
-	server.setRoute("/viewchange")
-	server.setRoute("/newview")
+	//server.setRoute("/checkpoint")
+	//server.setRoute("/viewchange")
+	//server.setRoute("/newview")
 
 	return server
 }
@@ -82,7 +81,7 @@ func (server *Server) DialOtherNodes() {
 	time.Sleep(time.Second * 3)
 
 	// Normal case.
-	var cReq = make(map[string]*websocket.Conn)
+	//var cReq = make(map[string]*websocket.Conn)
 	//var cPrePrepare = make(map[string]*websocket.Conn)
 	//var cPrepare = make(map[string]*websocket.Conn)
 	//var cCommit = make(map[string]*websocket.Conn)
@@ -92,12 +91,12 @@ func (server *Server) DialOtherNodes() {
 	var cReply = make(map[string]*websocket.Conn)
 
 	// View change.
-	var cCheckPoint = make(map[string]*websocket.Conn)
-	var cViewChange = make(map[string]*websocket.Conn)
-	var cNewView = make(map[string]*websocket.Conn)
+	//var cCheckPoint = make(map[string]*websocket.Conn)
+	//var cViewChange = make(map[string]*websocket.Conn)
+	//var cNewView = make(map[string]*websocket.Conn)
 
 	for _, nodeInfo := range server.node.NodeTable {
-		cReq[nodeInfo.NodeID] = server.setReceiveLoop("/req", nodeInfo)
+		//cReq[nodeInfo.NodeID] = server.setReceiveLoop("/req", nodeInfo)
 		//cPrePrepare[nodeInfo.NodeID] = server.setReceiveLoop("/preprepare", nodeInfo)
 		//cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
 		//cCommit[nodeInfo.NodeID] = server.setReceiveLoop("/commit", nodeInfo)
@@ -106,9 +105,9 @@ func (server *Server) DialOtherNodes() {
 		cCollate[nodeInfo.NodeID] = server.setReceiveLoop("/collate", nodeInfo)
 		cReply[nodeInfo.NodeID] = server.setReceiveLoop("/reply", nodeInfo)
 
-		cCheckPoint[nodeInfo.NodeID] = server.setReceiveLoop("/checkpoint", nodeInfo)
-		cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
-		cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
+		//cCheckPoint[nodeInfo.NodeID] = server.setReceiveLoop("/checkpoint", nodeInfo)
+		//cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
+		//cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
 
 	go server.sendDummyMsg()
@@ -144,14 +143,14 @@ func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *Node
 		//log.Printf("%s recv: %s", server.node.NodeID, consensus.Hash(message))
 
 		switch path {
-		case "/req":
-			var msg consensus.RequestMsg
-			err = json.Unmarshal(message, &msg)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			server.node.MsgEntrance <- &msg
+		//case "/req":
+		//	var msg consensus.RequestMsg
+		//	err = json.Unmarshal(message, &msg)
+		//	if err != nil {
+		//		log.Println(err)
+		//		continue
+		//	}
+		//	server.node.MsgEntrance <- &msg
 		//case "/preprepare":
 		//	var msg consensus.PrePrepareMsg
 		case "/prepare":
@@ -223,7 +222,7 @@ func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *Node
 func (server *Server) sendDummyMsg() {
 	// Send message from the current (changed) primary node.
 	// Changing view must precedes sending request message.
-	server.node.updateView(server.node.View.ID + 1)
+	//server.node.updateView(server.node.View.ID + 1)
 
 	primaryNode := server.node.View.Primary
 	if primaryNode.NodeID != server.node.MyInfo.NodeID {
@@ -231,7 +230,7 @@ func (server *Server) sendDummyMsg() {
 	}
 
 	// Set periodic send signal.
-	ticker := time.NewTicker(time.Millisecond * 500)
+	ticker := time.NewTicker(time.Millisecond * 100)
 	defer ticker.Stop()
 
 	// Create a dummy data.
@@ -241,9 +240,10 @@ func (server *Server) sendDummyMsg() {
 	}
 	data[len(data) - 1] = 0
 
-	u := url.URL{Scheme: "ws", Host: primaryNode.Url, Path: "/req"}
+	//u := url.URL{Scheme: "ws", Host: primaryNode.Url, Path: "/req"}
+	u := url.URL{Scheme: "ws", Host: primaryNode.Url, Path: "/prepare"}
 	log.Printf("connecting to %s", u.String())
-
+	sequenceID := 1
 	for {
 		select {
 		case <-ticker.C:
@@ -253,13 +253,16 @@ func (server *Server) sendDummyMsg() {
 			}
 
 			// Create a dummy message and send it.
-			dummy := dummyMsg("Op1", "Client1", data)
+			dummy := dummyMsg("Op1", "Client1", data, 
+				server.node.View.ID,int64(sequenceID),
+				server.node.MyInfo.NodeID)
 			err = c.WriteMessage(websocket.TextMessage, dummy)
 			if err != nil {
 				log.Println("write:", err)
 				return
 			}
 			c.Close()
+			sequenceID += len(server.node.NodeTable)
 		}
 	}
 }
@@ -282,19 +285,31 @@ func broadcast(errCh chan<- error, url string, msg []byte) {
 	errCh <- nil
 }
 
-func dummyMsg(operation string, clientID string, data []byte) []byte {
-	var msg consensus.RequestMsg
-	msg.Timestamp = time.Now().UnixNano()
-	msg.Operation = operation
-	msg.ClientID = clientID
-	msg.Data = string(data)
+func dummyMsg(operation string, clientID string, data []byte, 
+		viewID int64, sID int64, nodeID string) []byte {
+
+	var msg1 consensus.RequestMsg
+	msg1.Timestamp = time.Now().UnixNano()
+	msg1.Operation = operation
+	msg1.ClientID = clientID
+	msg1.Data = string(data)
+
+	digest, err := consensus.Digest(msg1)
+
+	var msg2 consensus.PrepareMsg
+	msg2.ViewID = viewID
+	msg2.SequenceID = sID
+	msg2.RequestMsg = &msg1
+	msg2.Digest = digest
+	msg2.EpochID = 0
+	msg2.NodeID = nodeID
+	msg2.Signature = ""
 
 	// {"operation": "Op1", "clientID": "Client1", "data": "JJWEJPQOWJE", "timestamp": 190283901}
-	jsonMsg, err := json.Marshal(&msg)
+	jsonMsg, err := json.Marshal(&msg2)
 	if err != nil {
 		log.Println(err)
 		return nil
 	}
-
 	return []byte(jsonMsg)
 }

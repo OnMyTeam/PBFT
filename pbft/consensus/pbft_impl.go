@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	//"log"
 	"sync"
 	"sync/atomic"
 )
-const prepareSigma, voteSigma, collateSigma, vcSigma time.Duration = 30, 30, 30, 1000
+const prepareSigma, voteSigma, collateSigma, vcSigma time.Duration = 3000, 3000, 3000, 10000
 type State struct {
 	ViewID          int64
 	NodeID          string
@@ -53,6 +54,7 @@ type MsgLogs struct {
 	//CommitMsgsMutex  sync.RWMutex
 	VoteMsgsMutex sync.RWMutex
 	CollateMsgsMutex sync.RWMutex
+	BNodeMutex sync.RWMutex
 
 	// Count PREPARE message created from the current node
 	// as one PREPARE message. PRE-PREPARE message from
@@ -325,13 +327,20 @@ func (State *State) Collating(){
 
 }
 func (state *State) SetBizantine(nodeID string) bool {
-	if state.BNode[nodeID] == 0{
+	/*
+	state.MsgLogs.BNodeMutex.Lock()
+	if _, ok := state.BNode[nodeID]; !ok {
 		state.BNode[nodeID] = 1
 		state.B += 1
+		state.MsgLogs.BNodeMutex.Unlock()
 		return true
 	} else {
+		state.MsgLogs.BNodeMutex.Unlock()
 		return false
 	}
+	*/
+	return false
+
 }
 func (state *State) GetSequenceID() int64 {
 	return state.SequenceID
@@ -404,6 +413,22 @@ func (state *State) GetCommitMsgs() map[string]*VoteMsg {
 	return newMap
 }
 */
+func (state *State) SetTimer(phase string) {
+	switch phase {
+	case "Prepare":
+		state.prepareTimer = time.NewTimer(time.Millisecond * prepareSigma)
+		state.prepareCanceled = make(chan struct {})
+	case "Vote":
+		state.voteTimer = time.NewTimer(time.Millisecond * voteSigma)
+		state.voteCanceled = make(chan struct {})
+	case "Collate":
+		state.collateTimer = time.NewTimer(time.Millisecond * collateSigma)
+		state.collateCanceled = make(chan struct {})
+	case "ViewChange":
+		state.viewchangeTimer = time.NewTimer(time.Millisecond * vcSigma)
+		state.viewchangeCanceled = make(chan struct {})
+	}
+}
 func (state *State) GetPhaseTimer(phase string) (*time.Timer){
 	switch phase {
 	case "Prepare":
@@ -430,22 +455,7 @@ func (state *State) GetCancelTimerCh(phase string) (chan struct {}){
 	}
 	return nil
 }
-func (state *State) SetTimer(phase string) {
-	switch phase {
-	case "Prepare":
-		state.prepareTimer = time.NewTimer(time.Millisecond * prepareSigma)
-		state.prepareCanceled = make(chan struct {})
-	case "Vote":
-		state.voteTimer = time.NewTimer(time.Millisecond * voteSigma)
-		state.voteCanceled = make(chan struct {})
-	case "Collate":
-		state.collateTimer = time.NewTimer(time.Millisecond * collateSigma)
-		state.collateCanceled = make(chan struct {})
-	case "Viewchange":
-		state.viewchangeTimer = time.NewTimer(time.Millisecond * vcSigma)
-		state.viewchangeCanceled = make(chan struct {})
-	}
-}
+
 func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) error {
 	// Wrong view. That is, wrong configurations of peers to start the consensus.
 	if state.ViewID != viewID {

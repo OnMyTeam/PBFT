@@ -5,6 +5,7 @@ import (
 	"os"
 	"encoding/json"
 	"fmt"
+	"log"
 )
 
 // Hard-coded for test.
@@ -49,5 +50,6 @@ func main() {
 
 	if server != nil {
 		server.Start()
+		log.Printf("Server Started!!")
 	}
 }
