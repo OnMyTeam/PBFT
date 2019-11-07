@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	//"log"
+	"log"
 	"sync"
 	"sync/atomic"
 )
@@ -71,7 +71,7 @@ type MsgLogs struct {
 	replyMsgSent    int32 // atomic bool
 }
 
-func CreateState(viewID int64, nodeID string, totNodes int) *State {
+func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State {
 	state := &State{
 		ViewID: viewID,
 		NodeID: nodeID,
@@ -95,6 +95,8 @@ func CreateState(viewID int64, nodeID string, totNodes int) *State {
 			commitMsgSent: 0,
 			replyMsgSent: 0,
 		},
+		SequenceID: seqID,
+
 		MsgState: make(chan interface{}, totNodes), // stack enough
 
 		//F: (totNodes - 1) / 3,
@@ -234,7 +236,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
 
 	// Print current voting status
-	fmt.Printf("[Vote-Collate]: %d, from %s, sequence number: %d\n",
+	log.Printf("[Vote-Collate]: %d, from %s, sequence number: %d\n",
 	           newTotalVoteMsg, voteMsg.NodeID, voteMsg.SequenceID)
 
 	// Return commit message only once.

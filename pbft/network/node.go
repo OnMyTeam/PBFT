@@ -163,7 +163,6 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 
 	//if node.TotalConsensus != 0 {
 	if msg == nil{
-		log.Printf("sequence no %d thread is made!", newTotalConsensus)
 		node.TimerStart(state, "Prepare")
 	 	node.TimerStart(state, "ViewChange")
 	} else {
@@ -332,12 +331,12 @@ func (node *Node) GetReply(msg *consensus.ReplyMsg) {
 	LogMsg(msg)
 }
 
-func (node *Node) createState(timeStamp int64) consensus.PBFT {
+func (node *Node) createState(seqID int64) consensus.PBFT {
 	// TODO: From TOCS: To guarantee exactly once semantics,
 	// replicas discard requests whose timestamp is lower than
 	// the timestamp in the last reply they sent to the client.
 
-	return consensus.CreateState(node.View.ID, node.MyInfo.NodeID, len(node.NodeTable))
+	return consensus.CreateState(node.View.ID, node.MyInfo.NodeID, len(node.NodeTable),  seqID)
 }
 
 func (node *Node) dispatchMsg() {
@@ -357,6 +356,7 @@ func (node *Node) routeMsg(msgEntered interface{}) {
 	// Messages are broadcasted from the node, so
 	// the message sent to itself can exist.
 	case *consensus.PrepareMsg:
+		log.Printf("%s is routing PrepareMsg", node.MyInfo.NodeID)
 		//if !node.isMyNodePrimary() {
 		//if node.MyInfo.NodeID != msg.NodeID{
 		node.MsgDelivery <- msg
@@ -407,9 +407,7 @@ func (node *Node) resolveMsg() {
 			if state != nil {
 				ch := state.GetMsgSendChannel()
 				ch <- msg
-			} else {
-				log.Printf("state %d is not exists", msg.SequenceID)
-			}
+			} 
 		case *consensus.CollateMsg:
 			state, err = node.getState(msg.SequenceID)
 			if state != nil {
@@ -442,6 +440,7 @@ func (node *Node) resolveMsg() {
 // i.e., the sequence number of the last committed message is
 // one smaller than the current message.
 func (node *Node) executeMsg() {
+	log.Println("Executed!!")
 	var committedMsgs []*consensus.RequestMsg
 	pairs := make(map[int64]*MsgPair)
 
