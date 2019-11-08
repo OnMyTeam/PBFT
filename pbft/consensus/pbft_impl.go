@@ -305,7 +305,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 		return nil, false, nil
 	}
 }
-func (state *State) Commit()(*ReplyMsg, *RequestMsg) {
+func (state *State) Commit()(*ReplyMsg, *PrepareMsg) {
 	return &ReplyMsg{
 		ViewID:    state.ViewID,
 		//Timestamp: state.MsgLogs.ReqMsg.Timestamp,
@@ -316,7 +316,7 @@ func (state *State) Commit()(*ReplyMsg, *RequestMsg) {
 		// locally and assign the result into reply message,
 		// with considering their operation ordering policy.
 		Result: "",
-	}, state.MsgLogs.PrepareMsg.RequestMsg
+	}, state.MsgLogs.PrepareMsg
 }
 func (State *State) Collating(){
 

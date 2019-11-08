@@ -20,7 +20,7 @@ type Node struct {
 	View            *View
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
 	//ViewChangeState *consensus.ViewChangeState
-	CommittedMsgs   []*consensus.RequestMsg // kinda block.
+	CommittedMsgs   []*consensus.PrepareMsg // kinda block.
 	TotalConsensus  int64 // atomic. number of consensus started so far.
 
 	// Channels
@@ -53,7 +53,7 @@ type View struct {
 
 type MsgPair struct {
 	replyMsg     *consensus.ReplyMsg
-	committedMsg *consensus.RequestMsg
+	committedMsg *consensus.PrepareMsg
 }
 
 // Outbound message
@@ -83,7 +83,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),
-		CommittedMsgs:   make([]*consensus.RequestMsg, 0),
+		CommittedMsgs:   make([]*consensus.PrepareMsg, 0),
 		//ViewChangeState: nil,
 
 		// Channels
@@ -247,7 +247,6 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		replyMsg, committedMsg := state.Commit()
 		// Attach node ID to the message
 		replyMsg.NodeID = node.MyInfo.NodeID
-
 		// Pass the incomplete reply message through MsgExecution
 		// channel to run its operation sequentially.
 		node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
@@ -256,24 +255,25 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 
 		LogStage("Vote", true)
 		node.Broadcast(collateMsg, "/collate")
-		LogStage("Collate", false)
+		// LogStage("Collate", false)
 
 		//Done
-	case consensus.UNCOMMITTED:
-		node.TimerStart(state, "Collate")
+	// case consensus.UNCOMMITTED:
+	// 	node.TimerStart(state, "Collate")
 
-		LogStage("Vote", true)
-		node.Broadcast(collateMsg, "/collate")
-		LogStage("commit", false)
-	}
+	// 	LogStage("Vote", true)
+	// 	node.Broadcast(collateMsg, "/collate")
+	// 	LogStage("commit", false)
+		}
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
-	newcollateMsg,isVoting, err := state.Collate(collateMsg)
+	newcollateMsg, isVoting, err := state.Collate(collateMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
 
 	if newcollateMsg == nil { 	//Only COMMITTED msg is created
+		fmt.Println("newcollateMsg : ", newcollateMsg)
 		return
 	}
 
@@ -414,13 +414,13 @@ func (node *Node) resolveMsg() {
 // one smaller than the current message.
 func (node *Node) executeMsg() {
 	log.Println("Executed!!")
-	var committedMsgs []*consensus.RequestMsg
+	var committedMsgs []*consensus.PrepareMsg
 	pairs := make(map[int64]*MsgPair)
 
 	for {
 		msgPair := <-node.MsgExecution
 		pairs[msgPair.committedMsg.SequenceID] = msgPair
-		committedMsgs = make([]*consensus.RequestMsg, 0)
+		committedMsgs = make([]*consensus.PrepareMsg, 0)
 
 		// Execute operation for all the consecutive messages.
 		for {
@@ -441,7 +441,6 @@ func (node *Node) executeMsg() {
 			if p == nil {
 				break
 			}
-
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			committedMsgs = append(committedMsgs, p.committedMsg)
@@ -477,9 +476,9 @@ func (node *Node) executeMsg() {
 
 		// Print all committed messages.
 		for _, v := range committedMsgs {
-			digest, _ := consensus.Digest(v.Data)
+			digest, _ := consensus.Digest(v.RequestMsg.Data)
 			fmt.Printf("***committedMsgs[%d]: clientID=%s, operation=%s, timestamp=%d, data(digest)=%s***\n",
-			           v.SequenceID, v.ClientID, v.Operation, v.Timestamp, digest)
+			           v.RequestMsg.SequenceID, v.RequestMsg.ClientID, v.RequestMsg.Operation, v.RequestMsg.Timestamp, digest)
 		}
 	}
 }

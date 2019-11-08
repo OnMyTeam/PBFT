@@ -223,7 +223,7 @@ func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *Node
 	}
 }
 func (server *Server) sendDummyMsg() {
-	ticker := time.NewTicker(time.Millisecond * 100)
+	ticker := time.NewTicker(time.Millisecond * 500)
 	defer ticker.Stop()
 
 	data := make([]byte, 1 << 20)
@@ -254,6 +254,7 @@ func (server *Server) sendDummyMsg() {
 			// Broadcast the dummy message.
 			errCh := make(chan error, 1)
 			log.Printf("Broadcasting dummy message from %s", u)
+			// log.Println("Broadcasting dummy message from ", u)
 			broadcast(errCh, u, dummy, server.node.PrivKey)
 			err := <-errCh
 			if err != nil {

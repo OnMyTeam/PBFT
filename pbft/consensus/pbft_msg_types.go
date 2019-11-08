@@ -49,7 +49,7 @@ type CollateMsg struct {
 	ViewID              int64      			`json:"viewID"`
 	SequenceID          int64      			`json:"sequenceID"`
 	Digest              string     			`json:"digest"`
-	MsgType                        			`json:"msgType"`
+	MsgType             MsgType				`json:"msgType"`
 	NodeID              string     			`json:"nodeID"`
 }
 

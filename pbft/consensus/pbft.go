@@ -16,7 +16,7 @@ type PBFT interface {
 	Vote(voteMsg *VoteMsg) (*CollateMsg, error)
 	Collate(collateMsg *CollateMsg) (*CollateMsg, bool, error)
 
-	Commit() (*ReplyMsg, *RequestMsg)
+	Commit() (*ReplyMsg, *PrepareMsg)
 	Collating()
 	SetBizantine(nodeID string) bool
 	GetSequenceID() int64
