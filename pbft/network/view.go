@@ -3,7 +3,7 @@ package network
 import (
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"fmt"
-
+	//"time"
 	"sync/atomic"
 	"unsafe"
 )
@@ -67,9 +67,14 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	node.updateView(newViewMsg.NextViewID)
 
 	// Fill all the fields of NEW-VIEW message.
-	node.fillNewViewMsg(newViewMsg)
+	var max_s int64
+	var min_s int64
+	max_s, min_s  = node.fillNewViewMsg(newViewMsg)
 
-	for i := int64(1); i < int64(len(newViewMsg.SetPrePrepareMsgs)); i++ {
+	newViewMsg.Max_S = max_s
+	newViewMsg.Min_S = min_s
+
+	for i := node.StableCheckPoint + 1; i <= int64(len(newViewMsg.SetPrePrepareMsgs)); i++ {
 		fmt.Println("************************************************************************")
 		fmt.Println(newViewMsg.SetPrePrepareMsgs[i])
 	}
@@ -80,10 +85,9 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	node.Broadcast(newViewMsg, "/newview")
 	LogStage("NewView", true)
 
-	node.IsViewChanging = false
 }
 
-func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) {
+func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64, int64){
 	// Search min_s the sequence number of the latest stable checkpoint and
 	// max_s the highest sequence number in a prepare message in V.
 	var min_s int64 = 0
@@ -95,11 +99,14 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) {
 			min_s = vcm.StableCheckPoint
 		}
 
-		for seq, prepareSet := range vcm.SetP {
+		for seq, prepareSet := range vcm.SetP { //if max_s get seq, it could be problem that max_s get pre-prepare's sequenceID
 			if seq < max_s {
 				continue
 			}
 			for _, prepareMsg := range prepareSet.PrepareMsgs {
+				if prepareMsg == nil {
+					continue
+				}
 				if max_s < prepareMsg.SequenceID {
 					max_s = prepareMsg.SequenceID
 				}
@@ -115,6 +122,9 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) {
 
 	for _, vcm := range newViewMsg.SetViewChangeMsgs {
 		for seq, setpm := range vcm.SetP {
+			if seq <= min_s{
+				continue
+			}
 			if newMap[seq] == nil {
 				digest := setpm.PrePrepareMsg.Digest
 				newMap[seq] = GetPrePrepareForNewview(newViewMsg.NextViewID, seq, digest)
@@ -122,6 +132,8 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) {
 		}
 	}
 	newViewMsg.SetPrePrepareMsgs = newMap
+
+	return max_s, min_s
 }
 
 func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
@@ -134,39 +146,116 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	node.VCStatesMutex.Unlock()
 
 	fmt.Printf("<<<<<<<<<<<<<<<<NewView>>>>>>>>>>>>>>>>: %d by %s\n", newviewMsg.NextViewID, newviewMsg.NodeID)
-	// preprepare message, prepare messages and commit message with sequence number n from min_s to max_s
-	// have to remove before redoing
-	// TODO Remove messages for redo
-	// TODO this node has to start redo
-	/*
-	for seq, prePrepareMsg := range newViewMsg.SetPrePrepareMsgs {
-		node.StatesMutex.Lock()
+
+	// Change View and Primary
+	node.updateView(newviewMsg.NextViewID)
+	node.StableCheckPoint = newviewMsg.Min_S
+	// Fill missing states and messages
+	node.FillHole(newviewMsg)
+
+	/*// Redo
+	for _, prePrepareMsg := NewViewMsg.SetPrePrepareMsgs {
 		var state consensus.PBFT
-		state, err := node.getState(prePrepareMsg.SequenceID)
-		state.ClearMsgLogs()
-
-
-		node.StatesMutex.Unlock()
+		state, _ = node.getState(prePrepareMsg.SequenceID)
+		node.GetPrePrepareMsgs(state, prePrepareMsg)
 	}
-	*/
+	*///
+	// Accept messages usign MsgEntrance channel
+	node.IsViewChanging = false
+
+
 	// verify view number of new-view massage
 	if newviewMsg.NextViewID != node.View.ID + 1 {
 		return nil
 	}
 
-	// verify vaild view-change massages of 2f + 1 including a valid view-change massages of a new primary
-
-	// 
-	//for seq, vcm := range msg.SetPre {
-
-	//}
-
-	// Change View and Primary
-	node.updateView(newviewMsg.NextViewID)
-
-	node.IsViewChanging = false
-
 	return nil
+}
+
+func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
+	// Check the number of states
+	fmt.Println("node.TotalConsensus :  ",node.TotalConsensus)
+
+	fmt.Println("newviewMsg.Min_S : ", newviewMsg.Min_S)
+	fmt.Println("newviewMsg.Max_S : ", newviewMsg.Max_S)
+
+	// Currunt Max sequence number of committed request
+	var committedMax int64 = 0
+	for seq, _ := range node.CommittedMsgs{
+		if committedMax <= int64(seq+1) {
+			committedMax = int64(seq+1)
+		}
+	}
+	fmt.Println("committedMax : ", committedMax)
+	for committedMax < newviewMsg.Min_S {
+		var request consensus.RequestMsg
+		newSequenceID := committedMax + 1
+		request.SequenceID = newSequenceID
+		request.Operation = ""
+		request.Timestamp = int64(0)
+		request.Data = ""
+		request.ClientID = ""
+		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
+		node.CommittedMsgs = append(node.CommittedMsgs, &request)
+		committedMax += 1
+	}
+	// if highest sequence number of received request and state is lower than min-s,
+	// node.TotalConsensus be added util min-s - 1
+	for node.TotalConsensus < newviewMsg.Min_S {
+		atomic.AddInt64(&node.TotalConsensus, 1)
+	}
+
+	// Fill the PrePrepare message from new-view message
+	for seq, prePrepareMsg := range newviewMsg.SetPrePrepareMsgs {
+		fmt.Println("newview seq : ", seq)
+
+		// preprepare.sequenceID could be higher than Max_S of SetPrePare
+		//if seq > newviewMsg.Max_S {
+
+		//	continue
+		//}
+
+		// node.StatesMutex.Lock()
+		var state consensus.PBFT
+		state, err := node.getState(seq)
+		if err != nil {
+			// Print error.
+		}
+		if state != nil {
+			// Fill the committedMax if it is not committed
+			if seq > committedMax {
+				fmt.Println("no request in node.CommittedMsgs : ", seq)
+				node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
+			}
+			// Initalize all of logs of this state
+			state.ClearMsgLogs()
+
+			// Change the viewid, preprepare message and preprepare message's digest of the state
+			node.States[seq] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prePrepareMsg, prePrepareMsg.Digest)
+
+		} else { //if this node does not have state and a request with sequence number n (prePrepareMsg.SequenceID)
+			// Fill the state of the sequence number of prePrepareMsg
+			state := node.createState(0)
+
+			state.SetSequenceID(prePrepareMsg.SequenceID)
+			// Log REQUEST message.
+			var request consensus.RequestMsg
+			request.SequenceID = seq
+			request.Operation = ""
+			request.Timestamp = int64(0)
+			request.Data = ""
+			request.ClientID = ""
+			state.SetReqMsg(&request)
+			fmt.Println("no request in node.CommittedMsgs : ", seq)
+			// Fill request message in the committedMax
+			node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
+			// Change the viewid, preprepare message and preprepare message's digest of the state
+			node.States[seq] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prePrepareMsg, prePrepareMsg.Digest)
+
+			atomic.AddInt64(&node.TotalConsensus, 1)
+		}
+		//node.StatesMutex.Unlock()
+	}
 }
 
 func (node *Node) updateView(viewID int64) {

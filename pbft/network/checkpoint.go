@@ -98,8 +98,7 @@ func (node *Node) CheckPointMissCheck(sequenceID int64) bool {
 		if state == nil {
 			return false
 		}
-		if len(state.GetCommitMsgs()) < (2*state.GetF() + 1) &&
-		   state.GetCommitMsgs()[node.MyInfo.NodeID] == nil {
+		if node.CommittedMsgs[i - 1] == nil{
 			return false
 		}
 	}
