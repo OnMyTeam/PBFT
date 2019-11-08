@@ -70,7 +70,7 @@ type MsgOut struct {
 const NumResolveMsgGo = 6
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 100
+const ConsensusDeadline = time.Millisecond * 35
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -394,7 +394,7 @@ func (node *Node) resolveMsg() {
 		case *consensus.CheckPointMsg:
 			node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
-			err = node.GetViewChange(msg)
+			node.GetViewChange(msg)
 		case *consensus.NewViewMsg:
 			err = node.GetNewView(msg)
 		}
