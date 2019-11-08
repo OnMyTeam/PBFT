@@ -4,6 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+
+	"math/big"
+	"crypto/ecdsa"
+	"crypto/rand"
 )
 
 func Hash(content []byte) string {
@@ -21,9 +25,24 @@ func Digest(object interface{}) (string, error) {
 
 	return Hash(msg), nil
 }
-func EncodeSig(object interface{}) (string) {
-	return ""
+func Sign(privKey *ecdsa.PrivateKey, data []byte) (*big.Int, *big.Int, []byte, error) {
+	r := big.NewInt(0)
+	s := big.NewInt(0)
+	signHash := sha256.Sum256(data)
+
+	r, s, err := ecdsa.Sign(rand.Reader, privKey, signHash[:])
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	signature := r.Bytes()
+	signature = append(signature, s.Bytes()...)
+
+	return r, s, signature, nil
 }
-func DecodeSig(object interface{}) (bool){
-	return true
+
+func Verify(pubKey *ecdsa.PublicKey, r, s *big.Int, data []byte) bool {
+	signHash := sha256.Sum256(data)
+	return ecdsa.Verify(pubKey, signHash[:], r, s)
 }

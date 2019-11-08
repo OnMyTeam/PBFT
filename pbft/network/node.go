@@ -10,12 +10,12 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"crypto/ecdsa"
 )
-
-
 
 type Node struct {
 	MyInfo          *NodeInfo
+	PrivKey         *ecdsa.PrivateKey
 	NodeTable       []*NodeInfo
 	View            *View
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
@@ -43,6 +43,7 @@ type Node struct {
 type NodeInfo struct {
 	NodeID string `json:"nodeID"`
 	Url    string `json:"url"`
+	PubKey *ecdsa.PublicKey
 }
 
 type View struct {
@@ -73,9 +74,10 @@ const CoolingTotalErrMsg = 5
 // Number of outbound connection for a node.
 const MaxOutboundConnection = 1000
 
-func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64) *Node {
+func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
 	node := &Node{
 		MyInfo:    myInfo,
+		PrivKey: decodePrivKey,
 		NodeTable: nodeTable,
 		View:      &View{},
 
@@ -143,18 +145,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 	//ctx, cancel := context.WithDeadline(context.Background(), d)
 
 
-	// Check the time is skewed.
-	//timeDiff := time.Until(d).Nanoseconds()
-	//fmt.Printf("The deadline for sequenceID %d is %d ms. (Skewed %d ms)\n",
-	//           state.GetSequenceID(),
-	//           timeDiff / int64(time.Millisecond),
-	//           (ConsensusDeadline.Nanoseconds() - timeDiff) / int64(time.Millisecond))
-	
-	// Increment the number of request message atomically.
-	// TODO: Currently, StartConsensus must succeed.
-	//fmt.Printf("Consensus Process (ViewID: %d, SequenceID: %d)\n",
-	//			prepareMsg.ViewID, prepareMsg.SequenceID)
-	//if node.TotalConsensus != 0{
+
 	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
 	fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)
 	state := node.createState(newTotalConsensus)
@@ -205,12 +196,8 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 }
 
 func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.PrepareMsg) {
-	log.Printf("GetPrepare executed!!")
-	if(prepareMsg != nil) {
-		if consensus.DecodeSig(prepareMsg) == false {
-			return
-		}
-	}
+	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
+						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 
 	voteMsg, err := state.Prepare(prepareMsg)
 	if err != nil {
@@ -224,7 +211,6 @@ func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.Prepare
 	
 	// Attach node ID to the message
 	voteMsg.NodeID = node.MyInfo.NodeID
-	voteMsg.Signature = consensus.EncodeSig(voteMsg)
 
 	if prepareMsg.SequenceID != 1 {
 		node.TimerStop(state, "Prepare")
@@ -234,20 +220,13 @@ func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.Prepare
 	LogStage("Prepare", true)
 	node.Broadcast(voteMsg, "/vote")
 	LogStage("Vote", false)
-	//log.Printf("%s is broadcasts vote msg!!", node.MyInfo.NodeID)
 
-	// From TOCS: The backups check the sequence numbers assigned by
-	// the primary and use timeouts to detect when it stops.
-	// They trigger view changes to select a new primary when it
-	// appears that the current one has failed.
 	go node.startTransitionWithDeadline(nil)
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	log.Printf("GetVote executed!!")
-	if consensus.DecodeSig(voteMsg) == false {
-		return 
-	}
+	fmt.Printf("[GetVote] to %s from %s sequenceID: %d\n", 
+					node.MyInfo.NodeID, voteMsg.NodeID, voteMsg.SequenceID)
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -261,7 +240,6 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 
 	// Attach node ID to the message
 	collateMsg.NodeID = node.MyInfo.NodeID
-	collateMsg.Signature = consensus.EncodeSig(collateMsg)
 
 	switch collateMsg.MsgType {
 	case consensus.COMMITTED:
@@ -290,10 +268,6 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	}
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
-	if consensus.DecodeSig(collateMsg) == false {
-		return
-	}
-
 	newcollateMsg,isVoting, err := state.Collate(collateMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -311,7 +285,6 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 
 	// Attach node ID to the message
 	newcollateMsg.NodeID = node.MyInfo.NodeID
-	newcollateMsg.Signature = consensus.EncodeSig(collateMsg)
 
 	LogStage("collate", true)
 	node.Broadcast(newcollateMsg, "/collate")
@@ -356,7 +329,6 @@ func (node *Node) routeMsg(msgEntered interface{}) {
 	// Messages are broadcasted from the node, so
 	// the message sent to itself can exist.
 	case *consensus.PrepareMsg:
-		log.Printf("%s is routing PrepareMsg", node.MyInfo.NodeID)
 		//if !node.isMyNodePrimary() {
 		//if node.MyInfo.NodeID != msg.NodeID{
 		node.MsgDelivery <- msg
@@ -392,8 +364,9 @@ func (node *Node) resolveMsg() {
 		// If even the previous sequence of entered sequence thread is not created
 		// ignore the entered message.
 		case *consensus.PrepareMsg:
+			fmt.Printf("%s resolving prepareMsg: %d\n", node.MyInfo.NodeID, msg.SequenceID)
 			if msg.SequenceID == 1{		//Genesis Message
-				log.Printf("%s resolving genesis message!!", node.MyInfo.NodeID)
+				fmt.Printf("%s resolving genesis message!!", node.MyInfo.NodeID)
 				node.startTransitionWithDeadline(msg)
 			} else {
 				state, err = node.getState(msg.SequenceID)
@@ -525,7 +498,7 @@ func (node *Node) sendMsg() {
 
 			// Goroutine for concurrent broadcast()
 			go func() {
-				broadcast(errCh, msg.Path, msg.Msg)
+				broadcast(errCh, msg.Path, msg.Msg, node.PrivKey)
 			}()
 
 			select {
@@ -570,6 +543,7 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 }
 func (node *Node) TimerStart(state consensus.PBFT, phase string) {
 	//log.Printf("%s Timer start function.. phase is %s", node.MyInfo.NodeID,phase)
+	/*
 	state.SetTimer(phase)
 	go func() {
 		select {
@@ -578,9 +552,12 @@ func (node *Node) TimerStart(state consensus.PBFT, phase string) {
 		case <-state.GetCancelTimerCh(phase):
 		}
 	}()
+	*/
 }
 func (node *Node) TimerStop(state consensus.PBFT, phase string) {
 	//log.Printf("%s Timer stop function.. phase is %s", node.MyInfo.NodeID,phase)
+	/*
 	state.GetPhaseTimer(phase).Stop()
 	state.GetCancelTimerCh(phase) <- struct {}{}
+	*/
 }

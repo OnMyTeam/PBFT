@@ -101,3 +101,7 @@ func (node *Node) updateView(viewID int64) {
 func (node *Node) isMyNodePrimary() bool {
 	return node.MyInfo.NodeID == node.View.Primary.NodeID
 }
+func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
+	viewIdx := viewID % int64(len(node.NodeTable))
+	return node.NodeTable[viewIdx]
+}

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"log"
+	//"log"
 	"sync"
 	"sync/atomic"
 )
@@ -164,7 +164,6 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 			Digest: state.MsgLogs.Digest,
 			PrepareMsg: prepareMsg,
 			NodeID: "",
-			Signature: "",
 			SequenceID: state.SequenceID, 				//This sequence number is already known..
 			MsgType: NULLMSG,
 		}
@@ -185,7 +184,6 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 		Digest: state.MsgLogs.Digest,
 		PrepareMsg: prepareMsg,
 		NodeID: "",
-		Signature: "",
 		SequenceID: state.SequenceID,
 		MsgType: VOTE,
 	}	
@@ -210,7 +208,6 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	   		ViewID:				state.ViewID,
 	   		Digest:				state.MsgLogs.Digest,
 	   		NodeID:				"",
-	   		Signature:			"",
 	   		SequenceID:			state.SequenceID,
 	   		MsgType:			UNCOMMITTED,
 		}
@@ -235,9 +232,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	state.MsgLogs.VoteMsgsMutex.Unlock()
 	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
 
-	// Print current voting status
-	log.Printf("[Vote-Collate]: %d, from %s, sequence number: %d\n",
-	           newTotalVoteMsg, voteMsg.NodeID, voteMsg.SequenceID)
+
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
@@ -251,7 +246,6 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	   		ViewID:		state.ViewID,
 	   		Digest:		state.MsgLogs.Digest,
 	   		NodeID:		"",
-	   		Signature:	"",
 	   		SequenceID:	state.SequenceID,
 	   		MsgType:	COMMITTED,
 	   	}
@@ -304,7 +298,6 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 	   		ViewID:		state.ViewID,
 	   		Digest:		state.MsgLogs.Digest,
 	   		NodeID:		"",
-	   		Signature:	"",
 	   		SequenceID:	state.SequenceID,
 	   		MsgType:	COMMITTED,
 		}, state.collateTimer == nil, nil
