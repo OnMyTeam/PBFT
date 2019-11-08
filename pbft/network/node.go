@@ -164,6 +164,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 	// The node can receive messages for any consensus stage,
 	// regardless of the current stage for the state.
 	ch := state.GetMsgReceiveChannel()
+	ch2 := state.GetMsgExitReceiveChannel()
 	for {
 		select {
 		case msgState := <-ch:
@@ -177,6 +178,8 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 			case *consensus.CollateMsg:
 				node.GetCollate(state, msg)
 			}
+		case <-ch2:
+			return
 		//case <-ctx.Done():
 			// Check the consensus of the current state precedes
 			// that of the last committed message in this node.
@@ -252,7 +255,8 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
 
 		node.TimerStop(state, "Vote")
-
+		ch:=state.GetMsgExitSendChannel()
+		ch<-0
 		LogStage("Vote", true)
 		node.Broadcast(collateMsg, "/collate")
 		// LogStage("Collate", false)

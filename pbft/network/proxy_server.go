@@ -223,7 +223,7 @@ func (server *Server) receiveLoop(c *websocket.Conn, path string, nodeInfo *Node
 	}
 }
 func (server *Server) sendDummyMsg() {
-	ticker := time.NewTicker(time.Millisecond * 500)
+	ticker := time.NewTicker(time.Millisecond * 1000)
 	defer ticker.Stop()
 
 	data := make([]byte, 1 << 20)
@@ -231,6 +231,7 @@ func (server *Server) sendDummyMsg() {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
+	fmt.Println("Block Size: %d\n",	len(data))
 	currentView := server.node.View.ID
 
 	sequenceID := 0

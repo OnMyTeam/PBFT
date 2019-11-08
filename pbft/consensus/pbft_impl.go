@@ -16,6 +16,7 @@ type State struct {
 	SequenceID      int64
 
 	MsgState chan interface{}
+	MsgExit		chan int64
 
 	// f: the number of Byzantine faulty nodes
 	// f = (n-1) / 3
@@ -98,6 +99,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		SequenceID: seqID,
 
 		MsgState: make(chan interface{}, totNodes), // stack enough
+		MsgExit: make(chan int64),
 
 		//F: (totNodes - 1) / 3,
 		F: (totNodes-1) / 2,
@@ -351,6 +353,14 @@ func (state *State) GetMsgReceiveChannel() <-chan interface{} {
 
 func (state *State) GetMsgSendChannel() chan<- interface{} {
 	return state.MsgState
+}
+
+func (state *State) GetMsgExitReceiveChannel() <-chan int64 {
+	return state.MsgExit
+}
+
+func (state *State) GetMsgExitSendChannel() chan<- int64 {
+	return state.MsgExit
 }
 
 func (state *State) GetReqMsg() *RequestMsg {

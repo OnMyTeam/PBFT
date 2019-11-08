@@ -24,6 +24,8 @@ type PBFT interface {
 
 	GetMsgReceiveChannel() <-chan interface{}
 	GetMsgSendChannel() chan<- interface{}
+	GetMsgExitReceiveChannel() <-chan int64
+	GetMsgExitSendChannel() chan<- int64
 
 	GetReqMsg() *RequestMsg
 	//GetPrePrepareMsg() 
