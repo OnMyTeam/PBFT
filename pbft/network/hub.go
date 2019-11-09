@@ -5,7 +5,7 @@
 package network
 
 // Hub maintains the set of active clients and broadcasts messages to the
-// clients.
+// clients. 
 type Hub struct {
 	// Registered clients.
 	clients map[*Client]bool

@@ -14,16 +14,18 @@ import (
 
 const (
 	// Time allowed to write a message to the peer.
-	writeWait = 1 * time.Second
-
+	//writeWait = 1 * time.Second
+	writeWait = 3 * time.Second
 	// Time allowed to read the next pong message from the peer.
-	pongWait = 3 * time.Second
+	//pongWait = 3 * time.Second
+	pongWait = 9 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
+	//pingPeriod = (pongWait * 9) / 10
 	pingPeriod = (pongWait * 9) / 10
-
 	// Maximum message size allowed from peer.
 	maxMessageSize = 2097152
+	//maxMessageSize = 209715200000
 )
 
 var upgrader = websocket.Upgrader{}
@@ -79,7 +81,7 @@ func (c *Client) writePump() {
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			//c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// The hub closed the channel.
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -102,7 +104,7 @@ func (c *Client) writePump() {
 				return
 			}
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			//c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Println("Ping error!")
 				return
@@ -118,7 +120,8 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+	//client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 512)}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in

@@ -102,7 +102,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		MsgExit: make(chan int64),
 
 		//F: (totNodes - 1) / 3,
-		F: (totNodes-1) / 2,
+		F: (totNodes-1) / 3,
 		B: 0,
 	}
 
@@ -171,6 +171,12 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 		}
 		return voteMsg, nil
 	}
+
+	digest, err := Digest(prepareMsg.RequestMsg)
+	if err != nil {
+		return nil, err
+	}
+	state.MsgLogs.Digest = digest
 	// case2: prepareMsg which arrived in right time
 	// Log PREPARE message.
 	state.MsgLogs.PrepareMsg = prepareMsg
@@ -180,6 +186,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	// the next available `sequence number` to a request and sending
 	// this assignment to the backups.
 	state.SequenceID = prepareMsg.SequenceID
+
 
 	voteMsg := &VoteMsg{
 		ViewID: state.ViewID,
@@ -238,7 +245,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
-	if int(newTotalVoteMsg) >= state.F - state.B + 1 && state.prepared() &&
+	if int(newTotalVoteMsg) == 2*state.F - state.B + 1 && state.prepared() &&
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
 	   	collateMsg := &CollateMsg{
@@ -479,6 +486,7 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 
 	// Check digest.
 	if digestGot != digest {
+		fmt.Printf("???\n")
 		return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
 	}
 
