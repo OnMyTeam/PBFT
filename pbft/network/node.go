@@ -69,10 +69,10 @@ const ConsensusDeadline = time.Millisecond * 1000
 const CoolingTime = time.Millisecond * 2
 
 // Number of error messages to start cooling.
-const CoolingTotalErrMsg = 5
+const CoolingTotalErrMsg = 30
 
 // Number of outbound connection for a node.
-const MaxOutboundConnection = 1000
+const MaxOutboundConnection = 500
 
 func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
 	node := &Node{
@@ -87,11 +87,11 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		//ViewChangeState: nil,
 
 		// Channels
-		MsgEntrance: make(chan interface{}, len(nodeTable) * 3),
-		MsgDelivery: make(chan interface{}, len(nodeTable) * 3), // TODO: enough?
-		MsgExecution: make(chan *MsgPair, len(nodeTable)*3),
-		MsgOutbound: make(chan *MsgOut, len(nodeTable)*3),
-		MsgError: make(chan []error, len(nodeTable)*3),
+		MsgEntrance: make(chan interface{}, len(nodeTable) * 100),
+		MsgDelivery: make(chan interface{}, len(nodeTable) * 100), // TODO: enough?
+		MsgExecution: make(chan *MsgPair, len(nodeTable)*100),
+		MsgOutbound: make(chan *MsgOut, len(nodeTable)*100),
+		MsgError: make(chan []error, len(nodeTable)*100),
 		//ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),
 
 		//StableCheckPoint:  0,

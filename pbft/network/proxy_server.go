@@ -150,7 +150,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			var msg consensus.PrepareMsg
 			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
 			if err != nil || ok == false {
-				break
+				//break
 			}
 			_ = json.Unmarshal(marshalledMsg, &msg)
 			server.node.MsgDelivery<-&msg
@@ -158,7 +158,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			var msg consensus.VoteMsg
 			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
 			if err != nil || ok == false {
-				break
+				//break
 			}
 			_ = json.Unmarshal(marshalledMsg, &msg)
 			server.node.MsgDelivery<-&msg
@@ -239,6 +239,9 @@ func (server *Server) sendDummyMsg() {
 			errCh := make(chan error, 1)
 			log.Printf("Broadcasting dummy message from %s, sequenceId: %d", u, sequenceID)
 			broadcast(errCh, u, dummy, server.node.PrivKey)
+			//if sequenceID == 1 {
+			//	time.Sleep(time.Millisecond * 100)
+			//}
 			err := <-errCh
 			if err != nil {
 				log.Println(err)
