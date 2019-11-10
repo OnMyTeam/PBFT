@@ -49,14 +49,15 @@ echo "Try to spawn $TOTALNODE nodes"
 
 echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 
-for i in `seq 1 $1`
-do
-	nodename="Node$i"
+# for i in `seq 1 $1`
+# do
+# 	nodename="Node$i"
 
-	echo "node $nodename spawned!"
-	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
-done
-
+# 	echo "node $nodename spawned!"
+# 	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
+# done
+(NODENAME=$nodename; ./main "Node1" 2>&1 > "$LOGPATH/Node1.log") &
+(NODENAME=$nodename; ./main "Node2" 2>&1 > "$LOGPATH/Node2.log") &
 printf "${RED}$TOTALNODE nodes are running${NC}\n"
 echo "(wait)"
 wait

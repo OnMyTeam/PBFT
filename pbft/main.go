@@ -15,10 +15,10 @@ import (
 // Hard-coded for test.
 var viewID = int64(10000000000)
 var nodeTableForTest = []*network.NodeInfo {
-	{NodeID: "Apple",  Url: "localhost:1111"},
-	{NodeID: "MS",     Url: "localhost:1112"},
-	{NodeID: "Google", Url: "localhost:1113"},
-	{NodeID: "IBM",    Url: "localhost:1114"},
+	{NodeID: "Node1",  Url: "localhost:1120"},
+	{NodeID: "Node2",     Url: "localhost:1121"},
+	{NodeID: "Node3", Url: "192.104.144.103:1111"},
+	{NodeID: "Node4",    Url: "192.104.144.103:1112"},
 }
 
 func PrivateKeyDecode(pemEncoded []byte) *ecdsa.PrivateKey {
