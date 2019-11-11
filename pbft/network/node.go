@@ -145,7 +145,9 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
 	fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)
 	state := node.createState(newTotalConsensus)
+	node.StatesMutex.Lock()
 	node.States[newTotalConsensus] = state
+	node.StatesMutex.Unlock()
 
 	if msg == nil{
 		node.TimerStart(state, "Prepare")
@@ -204,6 +206,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.Prepare
 	node.Broadcast(voteMsg, "/vote")
 	LogStage("Vote", false)
 
+	node.GetVote(state, voteMsg)
 	go node.startTransitionWithDeadline(nil)
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
@@ -236,7 +239,7 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
 
 		LogStage("Vote", true)
-		node.Broadcast(collateMsg, "/collate")
+		//node.Broadcast(collateMsg, "/collate")
 		// LogStage("Collate", false)
 
 		//Done
@@ -246,7 +249,7 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	// 	LogStage("Vote", true)
 	// 	node.Broadcast(collateMsg, "/collate")
 	// 	LogStage("commit", false)
-		}
+	}
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
 	newcollateMsg, isVoting, err := state.Collate(collateMsg)
@@ -536,7 +539,7 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 }
 func (node *Node) TimerStart(state consensus.PBFT, phase string) {
 	//log.Printf("%s Timer start function.. phase is %s", node.MyInfo.NodeID,phase)
-	/*
+	
 	state.SetTimer(phase)
 	go func() {
 		select {
@@ -545,12 +548,12 @@ func (node *Node) TimerStart(state consensus.PBFT, phase string) {
 		case <-state.GetCancelTimerCh(phase):
 		}
 	}()
-	*/
+	
 }
 func (node *Node) TimerStop(state consensus.PBFT, phase string) {
 	//log.Printf("%s Timer stop function.. phase is %s", node.MyInfo.NodeID,phase)
-	/*
+	
 	state.GetPhaseTimer(phase).Stop()
 	state.GetCancelTimerCh(phase) <- struct {}{}
-	*/
+	
 }

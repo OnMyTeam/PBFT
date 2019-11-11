@@ -308,7 +308,7 @@ func dummyMsg(operation string, clientID string, data []byte,
 	msg2.EpochID = 0
 	msg2.NodeID = nodeID
 
-	jsonMsg, err := json.Marshal(msg2)
+	jsonMsg, err := json.Marshal(&msg2)
 	if err != nil {
 		log.Println(err)
 		return nil

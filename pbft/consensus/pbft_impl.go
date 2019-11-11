@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"errors"
+	//"errors"
 	"fmt"
 	"time"
 	//"log"
@@ -201,7 +201,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	// Verify if v, n(a.k.a. sequenceID), d are correct.
 	if err := state.verifyMsg(prepareMsg.ViewID, prepareMsg.SequenceID, prepareMsg.Digest); err != nil {
 		state.SetBizantine(prepareMsg.NodeID)
-		voteMsg.MsgType = REJECT 				
+		//voteMsg.MsgType = REJECT 				
 		//return nil, errors.New("pre-prepare message is corrupted: " + err.Error() + " (operation: " + prePrepareMsg.RequestMsg.Operation + ")")
 	}
 	return voteMsg, nil
@@ -226,7 +226,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	// case2: voteMsg which arrived in right time
 	if err := state.verifyMsg(voteMsg.ViewID, voteMsg.SequenceID, voteMsg.Digest); err != nil {
 		state.SetBizantine(voteMsg.NodeID)
-		return nil, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
+		//return nil, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
 	}
 	// Append msg to its logs
 	state.MsgLogs.VoteMsgsMutex.Lock()
@@ -268,7 +268,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 	if err := state.verifyMsg(collateMsg.ViewID, collateMsg.SequenceID, collateMsg.Digest); err != nil {
 		state.SetBizantine(collateMsg.NodeID)
 		//return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
-		return nil, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
+		//return nil, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
 	}
 
 	// Append msg to its logs
@@ -471,11 +471,11 @@ func (state *State) GetCancelTimerCh(phase string) (chan struct {}){
 func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) error {
 	// Wrong view. That is, wrong configurations of peers to start the consensus.
 	if state.ViewID != viewID {
-		return fmt.Errorf("state.ViewID = %d, viewID = %d", state.ViewID, viewID)
+		return fmt.Errorf("verifyMsg ERROR state.ViewID = %d, viewID = %d", state.ViewID, viewID)
 	}
 
 	if state.SequenceID != sequenceID {
-		return fmt.Errorf("state.SequenceID = %d, sequenceID = %d", state.SequenceID, sequenceID)
+		return fmt.Errorf("verifyMsg ERROR state.SequenceID = %d, sequenceID = %d", state.SequenceID, sequenceID)
 	}
 
 	//digest, err := Digest(state.MsgLogs.ReqMsg)
@@ -487,7 +487,7 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 	// Check digest.
 	if digestGot != digest {
 		fmt.Printf("???\n")
-		return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
+		//return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
 	}
 
 	return nil
@@ -526,7 +526,7 @@ func (state *State) committed() bool {
 	}
 
 	//if int(atomic.LoadInt32(&state.MsgLogs.TotalCommitMsg)) < 2*state.F + 1 {
-	if int(atomic.LoadInt32(&state.MsgLogs.TotalCollateMsg)) <= state.F - state.B {
+	if int(atomic.LoadInt32(&state.MsgLogs.TotalCollateMsg)) <= 2*state.F + 1 {
 		return false
 	}
 
