@@ -33,6 +33,7 @@ type Node struct {
 
 	// Mutexes for preventing from concurrent access
 	StatesMutex sync.RWMutex
+	VCStatesMutex sync.RWMutex
 
 	// CheckpointMsg save
 	//StableCheckPoint    int64
@@ -511,7 +512,6 @@ func (node *Node) sendMsg() {
 			go func() {
 				broadcast(errCh, msg.Path, msg.Msg, node.PrivKey)
 			}()
-
 			select {
 			case err := <-errCh:
 				if err != nil {
