@@ -245,7 +245,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
-	if int(newTotalVoteMsg) == 2*state.F - state.B + 1 && state.prepared() &&
+	if int(newTotalVoteMsg) == 2*state.F + 1 && state.prepared() &&
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
 	   	collateMsg := &CollateMsg{

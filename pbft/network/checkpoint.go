@@ -87,9 +87,20 @@ func (node *Node) CheckPoint(msg *consensus.CheckPointMsg) {
 	}
 }
 
-// Print CheckPoint History
-func (node *Node) CheckPointHistory(SequenceID int64) error {
-	fmt.Println("CheckPoint History!! ")
+// Check the COMMIT messages, for given `periodCheckPoint` consecutive
+// sequence numbers, are enough including the messages for the current node.
+func (node *Node) CheckPointMissCheck(sequenceID int64) bool {
+	for i := (sequenceID + 1); i <= (sequenceID + periodCheckPoint); i++ {
+		state, _ := node.getState(i)
+		if state == nil {
+			return false
+		}
+		if node.CommittedMsgs[i - 1] == nil{
+			return false
+		}
+	}
+	return true
+}
 
 	for v, _ := range node.CheckPointMsgsLog {
 		fmt.Println(" Sequence N : ", v)

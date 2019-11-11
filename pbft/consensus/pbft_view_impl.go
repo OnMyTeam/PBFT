@@ -11,8 +11,9 @@ const one = 1
 type ViewChangeState struct {
 	NextViewID         int64
 	ViewChangeMsgLogs   *ViewChangeMsgLogs
-	NodeID		   string
-	StableCheckPoint int64
+	NewViewMsg			*NewViewMsg
+	NodeID		   		string
+	StableCheckPoint 	int64
 
 	// f: the number of Byzantine faulty nodes
 	// f = (n-1) / 3
@@ -39,7 +40,8 @@ func CreateViewChangeState(nodeID string, totNodes int, nextviewID int64, stable
 
 			TotalViewChangeMsg: 0,
 		},
-		NodeID : nodeID,
+		NewViewMsg: nil,
+		NodeID: nodeID,
 		StableCheckPoint: stablecheckpoint,
 
 		f: (totNodes - 1) / 3,
