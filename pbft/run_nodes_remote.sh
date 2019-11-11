@@ -58,7 +58,7 @@ echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 # done
 (NODENAME=$nodename; ./main "Node3" 2>&1 > "$LOGPATH/Node3.log") &
 (NODENAME=$nodename; ./main "Node4" 2>&1 > "$LOGPATH/Node4.log") &
-sudo sshpass -p"rlatkdrl82!" ssh -o StrictHostKeyChecking=no sgkim@166.104.144.110 "cd BFTProject/src/github.com/bigpicturelabs/consensusPBFT/pbft/&& bash ./run_nodes.sh 2"
+sudo sshpass -p"2019" ssh -o StrictHostKeyChecking=no jmslon@192.168.0.2 "cd go/src/github.com/bigpicturelabs/consensusPBFT/pbft/&& bash ./run_nodes2.sh 4"
 printf "${RED}$TOTALNODE nodes are running${NC}\n"
 echo "(wait)"
 wait

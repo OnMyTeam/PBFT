@@ -157,24 +157,23 @@ func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) (*Prep
 	return prepareMsg, nil
 }
 */
-func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
-	
+func (state *State) Prepare(prepareMsg *PrepareMsg) (VoteMsg, error) {
+	var voteMsg VoteMsg
 	// case1: Prepare Timer expires.. sending NULLMSG
 	if prepareMsg == nil {	
-		voteMsg := &VoteMsg{
+		voteMsg = VoteMsg{
 			ViewID: state.ViewID,
 			Digest: state.MsgLogs.Digest,
-			PrepareMsg: prepareMsg,
+			//PrepareMsg: prepareMsg,
 			NodeID: "",
 			SequenceID: state.SequenceID, 				//This sequence number is already known..
 			MsgType: NULLMSG,
 		}
 		return voteMsg, nil
 	}
-
 	digest, err := Digest(prepareMsg.RequestMsg)
 	if err != nil {
-		return nil, err
+		return voteMsg, err
 	}
 	state.MsgLogs.Digest = digest
 	// case2: prepareMsg which arrived in right time
@@ -188,15 +187,15 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	state.SequenceID = prepareMsg.SequenceID
 
 
-	voteMsg := &VoteMsg{
+	voteMsg = VoteMsg{
 		ViewID: state.ViewID,
 		Digest: state.MsgLogs.Digest,
-		PrepareMsg: prepareMsg,
+		//PrepareMsg: prepareMsg,
 		NodeID: "",
 		SequenceID: state.SequenceID,
 		MsgType: VOTE,
 	}	
-	state.MsgLogs.SentVoteMsg = voteMsg
+	state.MsgLogs.SentVoteMsg = &voteMsg
 
 	// Verify if v, n(a.k.a. sequenceID), d are correct.
 	if err := state.verifyMsg(prepareMsg.ViewID, prepareMsg.SequenceID, prepareMsg.Digest); err != nil {
@@ -207,11 +206,12 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	return voteMsg, nil
 }
 
-func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
+func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
+	var collateMsg CollateMsg
 	// case1: Vote Timer expires.. sending UNCOMMITTED
 	if voteMsg == nil {		//Timeout.. sending null-msg
-		collateMsg := &CollateMsg{
-	   		ReceivedPrepare:	state.MsgLogs.PrepareMsg,
+		collateMsg = CollateMsg{
+	   		//ReceivedPrepare:	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:    	state.MsgLogs.SentVoteMsg,
 	   		ViewID:				state.ViewID,
@@ -226,7 +226,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	// case2: voteMsg which arrived in right time
 	if err := state.verifyMsg(voteMsg.ViewID, voteMsg.SequenceID, voteMsg.Digest); err != nil {
 		state.SetBizantine(voteMsg.NodeID)
-		return nil, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
+		//return nil, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
 	}
 	// Append msg to its logs
 	state.MsgLogs.VoteMsgsMutex.Lock()
@@ -235,21 +235,19 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 		fmt.Printf("Vote message from %s is already received, sequence number=%d\n",
 		           voteMsg.NodeID, state.SequenceID)
 		state.MsgLogs.VoteMsgsMutex.Unlock()
-		return nil, nil
+		return collateMsg, nil
 	}
 	state.MsgLogs.VoteMsgs[voteMsg.NodeID] = voteMsg
 	state.MsgLogs.VoteMsgsMutex.Unlock()
 	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
-
-
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
 	if int(newTotalVoteMsg) == 2*state.F - state.B + 1 && state.prepared() &&
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
-	   	collateMsg := &CollateMsg{
-	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   	collateMsg := CollateMsg{
+	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
@@ -261,14 +259,15 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 		return collateMsg, nil
 	}
 
-	return nil, nil
+	return collateMsg, nil
 }
 
-func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
+func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, bool, error) {
+	var newcollateMsg CollateMsg
 	if err := state.verifyMsg(collateMsg.ViewID, collateMsg.SequenceID, collateMsg.Digest); err != nil {
 		state.SetBizantine(collateMsg.NodeID)
 		//return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
-		return nil, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
+		return newcollateMsg, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
 	}
 
 	// Append msg to its logs
@@ -278,7 +277,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 		fmt.Printf("Commit message from %s is already received, sequence number=%d\n",
 		           collateMsg.NodeID, state.SequenceID)
 		state.MsgLogs.CollateMsgsMutex.Unlock()
-		return nil, false,nil
+		return newcollateMsg, false,nil
 	}
 
 	state.MsgLogs.CollateMsgs[collateMsg.NodeID] = collateMsg
@@ -295,13 +294,13 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 		commitFlag = true;
 	case UNCOMMITTED:
 		state.Collating()
-		if int(state.MsgLogs.TotalVoteMsg) >= state.F - state.B + 1 {
+		if int(state.MsgLogs.TotalVoteMsg) == 2*state.F - state.B + 1 {
 			commitFlag = true;
 		}
 	}
 	if commitFlag == true {
-		return &CollateMsg{
-	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+		return CollateMsg{
+	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
@@ -311,7 +310,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 	   		MsgType:	COMMITTED,
 		}, state.collateTimer == nil, nil
 	} else {
-		return nil, false, nil
+		return newcollateMsg, false, nil
 	}
 }
 func (state *State) Commit()(*ReplyMsg, *PrepareMsg) {
@@ -486,8 +485,8 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 
 	// Check digest.
 	if digestGot != digest {
-		fmt.Printf("???\n")
-		return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
+		//fmt.Printf("???\n")
+		//return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
 	}
 
 	return nil

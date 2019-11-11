@@ -12,9 +12,9 @@ type PBFT interface {
 	Commit(commitMsg *VoteMsg) (*ReplyMsg, *RequestMsg, error)
 	*/
 	//StartConsensus(request *RequestMsg, sequenceID int64) (*PrepareMsg, error)
-	Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error)
-	Vote(voteMsg *VoteMsg) (*CollateMsg, error)
-	Collate(collateMsg *CollateMsg) (*CollateMsg, bool, error)
+	Prepare(prepareMsg *PrepareMsg) (VoteMsg, error)
+	Vote(voteMsg *VoteMsg) (CollateMsg, error)
+	Collate(collateMsg *CollateMsg) (CollateMsg, bool, error)
 
 	Commit() (*ReplyMsg, *PrepareMsg)
 	Collating()

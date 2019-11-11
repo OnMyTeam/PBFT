@@ -1,8 +1,5 @@
 package consensus
 
-import (
-	"math/big"
-)
 // Messages are TOCS style.
 
 type RequestMsg struct {
@@ -38,12 +35,11 @@ type VoteMsg struct {
 	Digest     string 		`json:"digest"`
 	NodeID     string 		`json:"nodeID"`
 	MsgType           		`json:"msgType"`
-	PrepareMsg 	*PrepareMsg `json:"prepareMsg"`
 }
 
 //Adaptive BFT
 type CollateMsg struct {
-	ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
+	//ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
 	ReceivedVoteMsg     map[string]*VoteMsg `json:"commit_proof"`
 	SentVoteMsg         *VoteMsg   			`json:"sent_vote_msg"`
 	ViewID              int64      			`json:"viewID"`
@@ -55,9 +51,10 @@ type CollateMsg struct {
 
 type SignatureMsg struct {
 	// signature
-	Signature []byte `json:"signature"`
-	R *big.Int `json:"r"`
-	S *big.Int `json:"s"`
+	//Signature []byte `json:"signature"`
+	//R *big.Int `json:"r"`
+	//S *big.Int `json:"s"`
+	MsgType		string 	`json:"msgType"`
 
 	// any consensus messages
 	MarshalledMsg []byte `json:"marshalledmsg"`

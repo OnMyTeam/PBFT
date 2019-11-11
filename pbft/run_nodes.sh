@@ -47,14 +47,14 @@ echo "Logs are saved in $LOGPATH"
 echo ""
 echo "Try to spawn $TOTALNODE nodes"
 
-#echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
-echo $2
-for i in `seq 3 $2`
+echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
+
+for i in `seq 1 $1`
 do
  	nodename="Node$i"
 
  	echo "node $nodename spawned!"
- 	(NODENAME=$nodename; ./main $NODENAME 2>&1 > "$LOGPATH/$NODENAME.log") &
+ 	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
  done
 printf "${RED}$TOTALNODE nodes are running${NC}\n"
 echo "(wait)"
