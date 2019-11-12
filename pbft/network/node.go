@@ -193,25 +193,25 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 				node.GetCollate(state, msg)
 			}
 		//case <-ch2:
-		case <-ctx.Done():
-			fmt.Println("thread finished...")
-			var lastCommittedMsg *consensus.PrepareMsg = nil
-			msgTotalCnt := len(node.CommittedMsgs)
-			if msgTotalCnt > 0 {
-				lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
-			}
+		// case <-ctx.Done():
+		// 	fmt.Println("thread finished...")
+		// 	var lastCommittedMsg *consensus.PrepareMsg = nil
+		// 	msgTotalCnt := len(node.CommittedMsgs)
+		// 	if msgTotalCnt > 0 {
+		// 		lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
+		// 	}
 
-			if msgTotalCnt == 0 ||
-			   lastCommittedMsg.SequenceID < state.GetSequenceID() {
-				//startviewchange
-				node.IsViewChanging = true
-				// Broadcast view change message.
-				node.MsgError <- []error{ctx.Err()}
-				fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
-				node.StartViewChange()
-			}
-			return
-		}
+		// 	if msgTotalCnt == 0 ||
+		// 	   lastCommittedMsg.SequenceID < state.GetSequenceID() {
+		// 		//startviewchange
+		// 		node.IsViewChanging = true
+		// 		// Broadcast view change message.
+		// 		node.MsgError <- []error{ctx.Err()}
+		// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
+		// 		node.StartViewChange()
+		// 	}
+		// 	return
+		// }
 	}
 }
 
