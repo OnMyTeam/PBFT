@@ -67,17 +67,19 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	node.updateView(newViewMsg.NextViewID)
 
 	// Fill all the fields of NEW-VIEW message.
-	var max_s int64
+	//var max_s int64
 	var min_s int64
-	max_s, min_s  = node.fillNewViewMsg(newViewMsg)
+	//max_s, min_s  = node.fillNewViewMsg(newViewMsg)
+	min_s = node.fillNewViewMsg(newViewMsg)
 
-	newViewMsg.Max_S = max_s
+	//newViewMsg.Max_S = max_s
 	newViewMsg.Min_S = min_s
 
-	for i := node.StableCheckPoint + 1; i <= int64(len(newViewMsg.SetPrepareMsgs)); i++ {
-		fmt.Println("************************************************************************")
-		fmt.Println(newViewMsg.SetPrepareMsgs[i])
-	}
+	// for i := node.StableCheckPoint + 1; i <= int64(len(newViewMsg.SetPrepareMsgs)); i++ {
+	// 	fmt.Println("************************************************************************")
+	// 	fmt.Println(newViewMsg.SetPrepareMsgs[i])
+	// }
+	fmt.Println(newViewMsg.PrepareMsg)
 	LogStage("NewView", false)
 
 	LogMsg(newViewMsg)
@@ -87,7 +89,7 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 
 }
 
-func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64, int64){
+func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 	// Search min_s the sequence number of the latest stable checkpoint and
 	// max_s the highest sequence number in a prepare message in V.
 	var min_s int64 = 0
@@ -99,41 +101,52 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64, int64
 			min_s = vcm.StableCheckPoint
 		}
 
-		for seq, voteSet := range vcm.SetP { //if max_s get seq, it could be problem that max_s get pre-prepare's sequenceID
-			if seq < max_s {
-				continue
-			}
-			for _, voteMsg := range voteSet.VoteMsgs {
-				if voteMsg == nil {
-					continue
-				}
-				if max_s < voteMsg.SequenceID {
-					max_s = voteMsg.SequenceID
-				}
-			}
-		}
+		// for seq, voteSet := range vcm.SetP { //if max_s get seq, it could be problem that max_s get pre-prepare's sequenceID
+		// 	if seq < max_s {
+		// 		continue
+		// 	}
+		// 	for _, voteMsg := range voteSet.VoteMsgs {
+		// 		if voteMsg == nil {
+		// 			continue
+		// 		}
+		// 		if max_s < voteMsg.SequenceID {
+		// 			max_s = voteMsg.SequenceID
+		// 		}
+		// 	}
+		// }
 	}
 
-	fmt.Println("min_s ", min_s, "max_s", max_s)
+	//fmt.Println("min_s ", min_s, "max_s", max_s)
+	fmt.Println("min_s ", min_s)
 
 	// Create SetPrePrepareMsgs of the new-view for redo
 	// only if a preprepare message of the SetPrePrepareMsgs with sequence number seq is nil.
-	newMap := make(map[int64]*consensus.PrepareMsg)
+	// newMap := make(map[int64]*consensus.PrepareMsg)
 
+	// for _, vcm := range newViewMsg.SetViewChangeMsgs {
+	// 	for seq, setpm := range vcm.SetP {
+	// 		if seq <= min_s{
+	// 			continue
+	// 		}
+	// 		if newMap[seq] == nil {
+	// 			digest := setpm.PrepareMsg.Digest
+	// 			newMap[seq] = GetPrepareForNewview(newViewMsg.NextViewID, seq, digest)
+	// 		}
+	// 	}
+	// }
+	// newViewMsg.SetPrepareMsgs = newMap
+	
 	for _, vcm := range newViewMsg.SetViewChangeMsgs {
 		for seq, setpm := range vcm.SetP {
 			if seq <= min_s{
 				continue
 			}
-			if newMap[seq] == nil {
-				digest := setpm.PrepareMsg.Digest
-				newMap[seq] = GetPrepareForNewview(newViewMsg.NextViewID, seq, digest)
-			}
+			digest := setpm.PrepareMsg.Digest
+			newViewMsg.PrepareMsg = GetPrepareForNewview(newViewMsg.NextViewID, min_s, digest)
 		}
 	}
-	newViewMsg.SetPrepareMsgs = newMap
 
-	return max_s, min_s
+	return min_s
 }
 
 func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
@@ -177,7 +190,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 	fmt.Println("node.TotalConsensus :  ",node.TotalConsensus)
 
 	fmt.Println("newviewMsg.Min_S : ", newviewMsg.Min_S)
-	fmt.Println("newviewMsg.Max_S : ", newviewMsg.Max_S)
+	//fmt.Println("newviewMsg.Max_S : ", newviewMsg.Max_S)
 
 	// Currunt Max sequence number of committed request
 	var committedMax int64 = 0
@@ -301,15 +314,15 @@ func (node *Node) CreateViewChangeMsg(setp map[int64]*consensus.SetPm) *consensu
 	// Get checkpoint message log for the latest stable checkpoint (C)
 	// for this node.
 	stableCheckPoint := node.StableCheckPoint
-	setc := node.CheckPointMsgsLog[stableCheckPoint]
+	//setc := node.CheckPointMsgsLog[stableCheckPoint]
 	fmt.Println("node.StableCheckPoint : ", stableCheckPoint)
-	fmt.Println("setc",setc)
+	//fmt.Println("setc",setc)
 
 	return &consensus.ViewChangeMsg{
 		NodeID: node.MyInfo.NodeID,
 		NextViewID: node.View.ID + 1,
 		StableCheckPoint: stableCheckPoint,
-		SetC: setc,
+		//SetC: setc,
 		SetP: setp,
 	}
 }

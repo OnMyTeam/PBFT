@@ -161,7 +161,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
-			server.node.MsgDelivery <- &msg
+			server.node.MsgEntrance <- &msg
 		case "/vote":
 			var msg consensus.VoteMsg
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
@@ -169,7 +169,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
-			server.node.MsgDelivery <- &msg
+			server.node.MsgEntrance <- &msg
 		case "/collate":
 			var msg consensus.CollateMsg
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
@@ -177,11 +177,11 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
-			server.node.MsgDelivery <- &msg
+			server.node.MsgEntrance <- &msg
 		case "/reply":
 			var msg consensus.ReplyMsg
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
-			server.node.MsgDelivery <- &msg
+			server.node.MsgEntrance <- &msg
 			/*
 		case "/checkpoint":
 			var msg consensus.CheckPointMsg
