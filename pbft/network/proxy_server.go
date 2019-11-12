@@ -174,7 +174,6 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			server.node.MsgDelivery <- &msg
 		case "/collate":
 			var msg consensus.CollateMsg
-
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
 			if msg.SequenceID == 0 {
 				fmt.Println("[receiveLoop-error] seq 0 came in")

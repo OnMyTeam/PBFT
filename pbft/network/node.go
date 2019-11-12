@@ -256,33 +256,54 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
 	fmt.Printf("[GetCollate] to %s from %s sequenceID: %d\n", 
 					node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID)
-	
-	newcollateMsg, isVoting, err := state.Collate(collateMsg)
-	if err != nil {
-		node.MsgError <- []error{err}
+	switch collateMsg.MsgType {
+		case consensus.COMMITTED:
+			node.TimerStop(state, "Vote")
+
+			if node.Committed[collateMsg.SequenceID] == 0 {
+				fmt.Printf("[Committed] %d vote is in executed Late\n", collateMsg.SequenceID)
+				atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
+				node.Broadcast(collateMsg, "/collate")
+				state, err := node.getState(collateMsg.SequenceID)
+				if err != nil {
+					// Print error.
+					node.MsgError <- []error{err}
+					// Send message into dispatcher.
+					return
+				}			
+				ch := state.GetMsgExitSendChannel()
+				ch <- 0
+			}
+		case consensus.UNCOMMITTED: 
+			newcollateMsg, isVoting, err := state.Collate(collateMsg)
+			if err != nil {
+				node.MsgError <- []error{err}
+			}
+
+			if newcollateMsg.SequenceID == 0 { 	//Only COMMITTED msg is created
+				fmt.Println("newcollateMsg : ", newcollateMsg)
+				return
+			}
+
+			if isVoting {		// vote timer is running.. collate timer is not running..
+				node.TimerStop(state, "Vote")
+			} else {							// vote timer is not running.. collate timer is running..
+				node.TimerStop(state, "Collate")
+			}
+
+			// Attach node ID to the message
+			newcollateMsg.NodeID = node.MyInfo.NodeID
+
+			if node.Committed[collateMsg.SequenceID] == 0 {
+				fmt.Printf("[Committed] collate is in executed\n")
+				atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
+				node.Broadcast(newcollateMsg, "/collate")
+				ch := node.States[collateMsg.SequenceID].GetMsgExitSendChannel()
+				ch <- 0
+			}		
+
 	}
 
-	if newcollateMsg.SequenceID == 0 { 	//Only COMMITTED msg is created
-		fmt.Println("newcollateMsg : ", newcollateMsg)
-		return
-	}
-
-	if isVoting {		// vote timer is running.. collate timer is not running..
-		node.TimerStop(state, "Vote")
-	} else {							// vote timer is not running.. collate timer is running..
-		node.TimerStop(state, "Collate")
-	}
-
-	// Attach node ID to the message
-	newcollateMsg.NodeID = node.MyInfo.NodeID
-
-	if node.Committed[collateMsg.SequenceID] == 0 {
-		fmt.Printf("[Committed] collate is in executed\n")
-		atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
-		node.Broadcast(newcollateMsg, "/collate")
-		ch := node.States[collateMsg.SequenceID].GetMsgExitSendChannel()
-		ch <- 0
-	}
 }
 
 func (node *Node) GetReply(msg *consensus.ReplyMsg) {
@@ -325,9 +346,9 @@ func (node *Node) resolveMsg() {
 				ch <- msg
 			}
 		case *consensus.CollateMsg:
-			if node.Committed[msg.SequenceID] == 1 {
-				continue
-			}
+			// if node.Committed[msg.SequenceID] == 1 {
+			// 	continue
+			// }
 			if node.MyInfo.NodeID != msg.NodeID {
 				state, err = node.getState(msg.SequenceID)
 				if state != nil {
