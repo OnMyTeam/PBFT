@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	//"errors"
+	"errors"
 	"fmt"
 	"time"
 	//"log"
@@ -38,10 +38,11 @@ type State struct {
 	voteCanceled		chan struct {}
 	collateCanceled		chan struct {}
 	viewchangeCanceled	chan struct {}
+
 }
 
 type MsgLogs struct {
-	//ReqMsg        *RequestMsg
+	ReqMsg        *RequestMsg
 	Digest 			string
 	//PrePrepareMsg *PrePrepareMsg
 	//PrepareMsgs   map[string]*VoteMsg
@@ -77,7 +78,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		ViewID: viewID,
 		NodeID: nodeID,
 		MsgLogs: &MsgLogs{
-			//ReqMsg:        nil,
+			ReqMsg:        nil,
 			//PrePrepareMsg: nil,
 			//PrepareMsgs:   make(map[string]*VoteMsg),
 			//CommitMsgs:    make(map[string]*VoteMsg),
@@ -104,6 +105,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		//F: (totNodes - 1) / 3,
 		F: (totNodes-1) / 3,
 		B: 0,
+		//succChkPointDelete: 0,
 	}
 
 	return state
@@ -157,11 +159,11 @@ func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) (*Prep
 	return prepareMsg, nil
 }
 */
-func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
-	
+func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (VoteMsg, error) {
+	var voteMsg VoteMsg
 	// case1: Prepare Timer expires.. sending NULLMSG
 	if prepareMsg == nil {	
-		voteMsg := &VoteMsg{
+		voteMsg = VoteMsg{
 			ViewID: state.ViewID,
 			Digest: state.MsgLogs.Digest,
 			//PrepareMsg: prepareMsg,
@@ -171,16 +173,15 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 		}
 		return voteMsg, nil
 	}
-
-	digest, err := Digest(prepareMsg.RequestMsg)
+	digest, err := Digest(state.MsgLogs.ReqMsg)
 	if err != nil {
-		return nil, err
+		return voteMsg, err
 	}
 	state.MsgLogs.Digest = digest
+	state.MsgLogs.ReqMsg = requestMsg
 	// case2: prepareMsg which arrived in right time
 	// Log PREPARE message.
 	state.MsgLogs.PrepareMsg = prepareMsg
-
 	// From TOCS: The primary picks the "ordering" for execution of
 	// operations requested by clients. It does this by assigning
 	// the next available `sequence number` to a request and sending
@@ -188,7 +189,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	state.SequenceID = prepareMsg.SequenceID
 
 
-	voteMsg := &VoteMsg{
+	voteMsg = VoteMsg{
 		ViewID: state.ViewID,
 		Digest: state.MsgLogs.Digest,
 		//PrepareMsg: prepareMsg,
@@ -196,7 +197,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 		SequenceID: state.SequenceID,
 		MsgType: VOTE,
 	}	
-	state.MsgLogs.SentVoteMsg = voteMsg
+	state.MsgLogs.SentVoteMsg = &voteMsg
 
 	// Verify if v, n(a.k.a. sequenceID), d are correct.
 	if err := state.verifyMsg(prepareMsg.ViewID, prepareMsg.SequenceID, prepareMsg.Digest); err != nil {
@@ -207,12 +208,13 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	return voteMsg, nil
 }
 
-func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
+func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
+	var collateMsg CollateMsg
 	// case1: Vote Timer expires.. sending UNCOMMITTED
 	if voteMsg == nil {		//Timeout.. sending null-msg
-		collateMsg := &CollateMsg{
-	   		// ReceivedPrepare:	state.MsgLogs.PrepareMsg,
-	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+		collateMsg = CollateMsg{
+	   		//ReceivedPrepare:	state.MsgLogs.PrepareMsg,
+	   		ReceivedVoteMsg:	make(map[string]*VoteMsg),
 	   		SentVoteMsg:    	state.MsgLogs.SentVoteMsg,
 	   		ViewID:				state.ViewID,
 	   		Digest:				state.MsgLogs.Digest,
@@ -220,6 +222,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	   		SequenceID:			state.SequenceID,
 	   		MsgType:			UNCOMMITTED,
 		}
+		collateMsg.ReceivedVoteMsg = state.MsgLogs.VoteMsgs
 		return collateMsg, nil
 	}
 
@@ -235,21 +238,19 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 		fmt.Printf("Vote message from %s is already received, sequence number=%d\n",
 		           voteMsg.NodeID, state.SequenceID)
 		state.MsgLogs.VoteMsgsMutex.Unlock()
-		return nil, nil
+		return collateMsg, nil
 	}
 	state.MsgLogs.VoteMsgs[voteMsg.NodeID] = voteMsg
 	state.MsgLogs.VoteMsgsMutex.Unlock()
 	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
-
-
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
 	if int(newTotalVoteMsg) == 2*state.F + 1 && state.prepared() &&
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
-	   	collateMsg := &CollateMsg{
-	   		// ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   	collateMsg := CollateMsg{
+	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	make(map[string]*VoteMsg),
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
@@ -262,14 +263,15 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 		return collateMsg, nil
 	}
 
-	return nil, nil
+	return collateMsg, nil
 }
 
-func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
+func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, bool, error) {
+	var newcollateMsg CollateMsg
 	if err := state.verifyMsg(collateMsg.ViewID, collateMsg.SequenceID, collateMsg.Digest); err != nil {
 		state.SetBizantine(collateMsg.NodeID)
 		//return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
-		//return nil, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
+		return newcollateMsg, false, errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
 	}
 
 	// Append msg to its logs
@@ -279,7 +281,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 		fmt.Printf("Commit message from %s is already received, sequence number=%d\n",
 		           collateMsg.NodeID, state.SequenceID)
 		state.MsgLogs.CollateMsgsMutex.Unlock()
-		return nil, false,nil
+		return newcollateMsg, false,nil
 	}
 
 	state.MsgLogs.CollateMsgs[collateMsg.NodeID] = collateMsg
@@ -296,13 +298,13 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 		commitFlag = true;
 	case UNCOMMITTED:
 		state.Collating()
-		if int(state.MsgLogs.TotalVoteMsg) >= state.F - state.B + 1 {
+		if int(state.MsgLogs.TotalVoteMsg) == 2*state.F - state.B + 1 {
 			commitFlag = true;
 		}
 	}
 	if commitFlag == true {
-		return &CollateMsg{
-	   		// ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+		return CollateMsg{
+	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
@@ -312,7 +314,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 	   		MsgType:	COMMITTED,
 		}, state.collateTimer == nil, nil
 	} else {
-		return nil, false, nil
+		return newcollateMsg, false, nil
 	}
 }
 func (state *State) Commit()(*ReplyMsg, *PrepareMsg) {
@@ -373,7 +375,7 @@ func (state *State) GetMsgExitSendChannel() chan<- int64 {
 
 func (state *State) GetReqMsg() *RequestMsg {
 	//return state.MsgLogs.ReqMsg
-	return state.MsgLogs.PrepareMsg.RequestMsg
+	return state.MsgLogs.ReqMsg
 }
 func (state *State) GetPrepareMsg() *PrepareMsg {
 	return state.MsgLogs.PrepareMsg
@@ -487,7 +489,7 @@ func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) 
 
 	// Check digest.
 	if digestGot != digest {
-		fmt.Printf("???\n")
+		//fmt.Printf("???\n")
 		//return fmt.Errorf("digest = %s, digestGot = %s", digest, digestGot)
 	}
 
@@ -532,4 +534,24 @@ func (state *State) committed() bool {
 	}
 
 	return true
+}
+
+func (state *State) SetReqMsg(request *RequestMsg) {
+	state.MsgLogs.ReqMsg = request
+}
+
+func (state *State) SetPrepareMsg(prepareMsg *PrepareMsg) {
+	state.MsgLogs.PrepareMsg = prepareMsg
+}
+
+func (state *State) SetSequenceID(sequenceID int64) {
+	state.SequenceID = sequenceID
+}
+
+func (state *State) SetDigest(digest string) {
+	state.MsgLogs.Digest = digest
+}
+
+func (state *State) SetViewID(viewID int64) {
+	state.ViewID = viewID
 }

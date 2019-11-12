@@ -12,9 +12,9 @@ type PBFT interface {
 	Commit(commitMsg *VoteMsg) (*ReplyMsg, *RequestMsg, error)
 	*/
 	//StartConsensus(request *RequestMsg, sequenceID int64) (*PrepareMsg, error)
-	Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error)
-	Vote(voteMsg *VoteMsg) (*CollateMsg, error)
-	Collate(collateMsg *CollateMsg) (*CollateMsg, bool, error)
+	Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (VoteMsg, error)
+	Vote(voteMsg *VoteMsg) (CollateMsg, error)
+	Collate(collateMsg *CollateMsg) (CollateMsg, bool, error)
 
 	Commit() (*ReplyMsg, *PrepareMsg)
 	Collating()
@@ -36,4 +36,13 @@ type PBFT interface {
 	GetPhaseTimer(phase string) (*time.Timer)
 	GetCancelTimerCh(phase string) (chan struct {})
 	SetTimer(phase string)
+
+	//SetSuccChkPoint(int64)
+	SetSequenceID(sequenceID int64)
+	SetDigest(digest string)
+	SetViewID(viewID int64)
+
+	//setrequ
+	ClearMsgLogs()
+	Redo_SetState(viewID int64, nodeID string, totNodes int, prepareMsg *PrepareMsg, digest string) *State
 }

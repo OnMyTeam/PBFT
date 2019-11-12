@@ -3,15 +3,16 @@
 package network
 
 import (
+	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/url"
+	"crypto/ecdsa"
+	"encoding/json"
 	//"fmt"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
-	"encoding/json"
 	"log"
 	"time"
-	"crypto/ecdsa"
 	//"sync"
 )
 const sendPeriod time.Duration = 200
@@ -41,9 +42,9 @@ func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64, decodePrivKey
 	}
 
 	server.setRoute("/prepare")
-	server.setRoute("/vote")
-	server.setRoute("/collate")
-	server.setRoute("/reply")
+	//server.setRoute("/vote")
+	//server.setRoute("/collate")
+	//server.setRoute("/reply")
 	// View change.
 	//server.setRoute("/checkpoint")
 	//server.setRoute("/viewchange")
@@ -77,10 +78,14 @@ func (server *Server) DialOtherNodes() {
 	// Sleep until all nodes perform ListenAndServ().
 	time.Sleep(time.Second * 3)
 
+
 	var cPrepare = make(map[string]*websocket.Conn)
+	/*
 	var cVote = make(map[string]*websocket.Conn)
 	var cCollate = make(map[string]*websocket.Conn)
 	var cReply = make(map[string]*websocket.Conn)
+	*/
+
 
 	// View change.
 	//var cCheckPoint = make(map[string]*websocket.Conn)
@@ -89,18 +94,20 @@ func (server *Server) DialOtherNodes() {
 
 	for _, nodeInfo := range server.node.NodeTable {
 
+
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
-		cVote[nodeInfo.NodeID] = server.setReceiveLoop("/vote", nodeInfo)
-		cCollate[nodeInfo.NodeID] = server.setReceiveLoop("/collate", nodeInfo)
-		cReply[nodeInfo.NodeID] = server.setReceiveLoop("/reply", nodeInfo)
+		//cVote[nodeInfo.NodeID] = server.setReceiveLoop("/vote", nodeInfo)
+		//cCollate[nodeInfo.NodeID] = server.setReceiveLoop("/collate", nodeInfo)
+		//cReply[nodeInfo.NodeID] = server.setReceiveLoop("/reply", nodeInfo)
+
 
 		//cCheckPoint[nodeInfo.NodeID] = server.setReceiveLoop("/checkpoint", nodeInfo)
 		//cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
 		//cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
-	time.Sleep(time.Millisecond * 2000)
-	go server.sendDummyMsg()
-
+	if server.node.MyInfo.NodeID == "Node1"{
+		go server.sendDummyMsg()
+	}
 	// Wait.
 	select {}
 
@@ -122,7 +129,7 @@ func (server *Server) setReceiveLoop(path string, nodeInfo *NodeInfo) *websocket
 }
 
 func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *NodeInfo) {
-	c := cc
+	c:=cc
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
@@ -139,69 +146,54 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			log.Printf("currunpted message size: %d\n", len(message))
 			continue
 		}
-		//log.Printf("%s recv: %s", server.node.NodeID, consensus.Hash(message))
-
-		var marshalledMsg []byte
-		var ok bool
-		switch path {
+		var marshalledMsg consensus.SignatureMsg
+		//marshalledMsg, err= deattachSignatureMsg(message, nodeInfo.PubKey)
+		err = json.Unmarshal(message, &marshalledMsg)
+		if err != nil {
+			fmt.Println("[receiveLoop-error]", err)
+		}
+		switch marshalledMsg.MsgType {
 		case "/prepare":
-			var msg consensus.PrepareMsg
-			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
-			if err != nil || ok == false {
-				break
+			// ReqPrePareMsgs have RequestMsg and PrepareMsg
+			var msg consensus.ReqPrePareMsgs
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			if msg.PrepareMsg.SequenceID == 0 {
+				fmt.Println("[receiveLoop-error] seq 0 came in")
+				continue
 			}
-			_ = json.Unmarshal(marshalledMsg, &msg)
-			server.node.MsgDelivery<-&msg
+			server.node.MsgDelivery <- &msg
 		case "/vote":
 			var msg consensus.VoteMsg
-			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
-			if err != nil || ok == false {
-				break
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			if msg.SequenceID == 0 {
+				fmt.Println("[receiveLoop-error] seq 0 came in")
+				continue
 			}
-			_ = json.Unmarshal(marshalledMsg, &msg)
-			server.node.MsgDelivery<-&msg
-		case  "/collate":
-			var msg consensus.CollateMsg 
-			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
-			if err != nil || ok == false {
-				//break
+			server.node.MsgDelivery <- &msg
+		case "/collate":
+			var msg consensus.CollateMsg
+
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			if msg.SequenceID == 0 {
+				fmt.Println("[receiveLoop-error] seq 0 came in")
+				continue
 			}
-			_ = json.Unmarshal(marshalledMsg, &msg)
-			server.node.MsgDelivery<-&msg
+			server.node.MsgDelivery <- &msg
 		case "/reply":
 			var msg consensus.ReplyMsg
-			marshalledMsg, err, ok = deattachSignatureMsg(message, nodeInfo.PubKey)
-			if err != nil || ok == false {
-				break
-			}
-			_ = json.Unmarshal(marshalledMsg, &msg)
-			server.node.MsgDelivery<-&msg
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			server.node.MsgDelivery <- &msg
 			/*
 		case "/checkpoint":
 			var msg consensus.CheckPointMsg
-			err = json.Unmarshal(message, &msg)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
 			server.node.MsgEntrance <- &msg
 		case "/viewchange":
 			var msg consensus.ViewChangeMsg
-			err = json.Unmarshal(message, &msg)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
 			server.node.ViewMsgEntrance <- &msg
 		case "/newview":
 			var msg consensus.NewViewMsg
-			err = json.Unmarshal(message, &msg)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
 			server.node.ViewMsgEntrance <- &msg
-			*/
+			 */
 		}
 	}
 }
@@ -209,34 +201,34 @@ func (server *Server) sendDummyMsg() {
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
 
+	//data := make([]byte, 1 << 20)
 	data := make([]byte, 1 << 20)
 	for i := range data {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
-	currentView := server.node.View.ID
+	//currentView := server.node.View.ID
 
 	sequenceID := 0
 
 	for  {
 		select {
 		case <-ticker.C:
-			primaryNode := server.node.getPrimaryInfoByID(currentView) 
-			currentView++
+			//primaryNode := server.node.getPrimaryInfoByID(currentView)
+			//currentView++
 			sequenceID += 1
-			
-			if primaryNode.NodeID != server.node.MyInfo.NodeID {
-				continue
-			}
-			u:=primaryNode.Url + "/prepare"
+
+			//if primaryNode.NodeID != server.node.MyInfo.NodeID {
+			//	continue
+			//}
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
 				server.node.MyInfo.NodeID)	
 
 			// Broadcast the dummy message.
 			errCh := make(chan error, 1)
-			log.Printf("Broadcasting dummy message from %s, sequenceId: %d", u, sequenceID)
-			broadcast(errCh, u, dummy, server.node.PrivKey)
+			log.Printf("Broadcasting dummy message from %s, sequenceId: %d", server.node.MyInfo.Url, sequenceID)
+			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
 			err := <-errCh
 			if err != nil {
 				log.Println(err)
@@ -246,10 +238,9 @@ func (server *Server) sendDummyMsg() {
 
 	}
 }
-
-func broadcast(errCh chan<- error, url string, msg []byte, privKey *ecdsa.PrivateKey) {
-	sigMgsBytes := attachSignatureMsg(msg, privKey)
-	url = "ws://" + url // Fix using url.URL{}
+func broadcast(errCh chan<- error, url string, msg []byte, path string, privKey *ecdsa.PrivateKey) {
+	sigMgsBytes := attachSignatureMsg(msg, privKey, path)
+	url = "ws://" + url +"/prepare" // Fix using url.URL{}
 	c, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		errCh <- err
@@ -264,9 +255,12 @@ func broadcast(errCh chan<- error, url string, msg []byte, privKey *ecdsa.Privat
 
 	errCh <- nil
 }
-func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey) []byte {
+
+func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey, path string) []byte {
 	var sigMgs consensus.SignatureMsg
+	/*
 	r,s,signature, err:=consensus.Sign(privKey, msg)
+
 	if err == nil {
 		sigMgs = consensus.SignatureMsg {
 			Signature: signature,
@@ -275,38 +269,50 @@ func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey) []byte {
 			MarshalledMsg: msg,
 		}
 	}
-	sigMgsBytes, _ := json.Marshal(sigMgs)
+	*/
+	sigMgs = consensus.SignatureMsg {
+		MsgType: path,
+		MarshalledMsg: msg,
+	}
+	sigMgsBytes, _ := json.Marshal(&sigMgs)
 	return sigMgsBytes
 }
-func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey) ([]byte, error, bool){
+//func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey) ([]byte, error, bool){
+func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(*consensus.SignatureMsg, error){
 	var sigMgs consensus.SignatureMsg
 	err := json.Unmarshal(msg, &sigMgs)
-
+	//ok := true
 	if err != nil {
-		return nil, err, false
+		//return nil, err, false
+		return nil, err
 	}
-	ok := consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
-	return sigMgs.MarshalledMsg, nil, ok
+	//ok := consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
+	//return sigMgs.MarshalledMsg, nil, ok
+	return &sigMgs, nil
 }
 func dummyMsg(operation string, clientID string, data []byte, 
 		viewID int64, sID int64, nodeID string) []byte {
-	var msg1 consensus.RequestMsg
-	msg1.Timestamp = time.Now().UnixNano()
-	msg1.Operation = operation
-	msg1.ClientID = clientID
-	msg1.Data = string(data)
+	var RequestMsg consensus.RequestMsg
+	RequestMsg.Timestamp = time.Now().UnixNano()
+	RequestMsg.Operation = operation
+	RequestMsg.ClientID = clientID
+	RequestMsg.Data = string(data)
+	RequestMsg.SequenceID = sID
+	
+	digest, err := consensus.Digest(RequestMsg)
 
-	digest, err := consensus.Digest(msg1)
+	var PrepareMsg consensus.PrepareMsg
+	PrepareMsg.ViewID = viewID
+	PrepareMsg.SequenceID = sID
+	PrepareMsg.Digest = digest
+	PrepareMsg.EpochID = 0
+	PrepareMsg.NodeID = nodeID
 
-	var msg2 consensus.PrepareMsg
-	msg2.ViewID = viewID
-	msg2.SequenceID = sID
-	msg2.RequestMsg = &msg1
-	msg2.Digest = digest
-	msg2.EpochID = 0
-	msg2.NodeID = nodeID
+	var ReqPrePareMsgs consensus.ReqPrePareMsgs
+	ReqPrePareMsgs.RequestMsg = &RequestMsg
+	ReqPrePareMsgs.PrepareMsg = &PrepareMsg
 
-	jsonMsg, err := json.Marshal(&msg2)
+	jsonMsg, err := json.Marshal(ReqPrePareMsgs)
 	if err != nil {
 		log.Println(err)
 		return nil

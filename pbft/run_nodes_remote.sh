@@ -49,13 +49,16 @@ echo "Try to spawn $TOTALNODE nodes"
 
 echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 
-for i in `seq 1 $1`
-do
- 	nodename="Node$i"
+# for i in `seq 1 $1`
+# do
+# 	nodename="Node$i"
 
- 	echo "node $nodename spawned!"
- 	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
- done
+# 	echo "node $nodename spawned!"
+# 	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
+# done
+(NODENAME=$nodename; ./main "Node3" 2>&1 > "$LOGPATH/Node3.log") &
+(NODENAME=$nodename; ./main "Node4" 2>&1 > "$LOGPATH/Node4.log") &
+sudo sshpass -p"2019" ssh -o StrictHostKeyChecking=no jmslon@192.168.0.2 "cd go/src/github.com/bigpicturelabs/consensusPBFT/pbft/&& bash ./run_nodes2.sh 4"
 printf "${RED}$TOTALNODE nodes are running${NC}\n"
 echo "(wait)"
 wait
