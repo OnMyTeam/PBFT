@@ -196,7 +196,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		request.Data = ""
 		request.ClientID = ""
 		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
-		node.CommittedMsgs = append(node.CommittedMsgs, &request)
+		//node.CommittedMsgs = append(node.CommittedMsgs, &request)
 		committedMax += 1
 	}
 	// if highest sequence number of received request and state is lower than min-s,
@@ -225,7 +225,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 			// Fill the committedMax if it is not committed
 			if seq > committedMax {
 				fmt.Println("no request in node.CommittedMsgs : ", seq)
-				node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
+				//node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
 			}
 			// Initalize all of logs of this state
 			state.ClearMsgLogs()
@@ -245,10 +245,11 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 			request.Timestamp = int64(0)
 			request.Data = ""
 			request.ClientID = ""
-			state.SetReqMsg(&request)
+			//state.SetReqMsg(&request)
 			fmt.Println("no request in node.CommittedMsgs : ", seq)
 			// Fill request message in the committedMax
-			node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
+			//node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
+			
 			// Change the viewid, preprepare message and preprepare message's digest of the state
 			node.States[seq] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
 
