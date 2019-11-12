@@ -38,6 +38,7 @@ type State struct {
 	voteCanceled		chan struct {}
 	collateCanceled		chan struct {}
 	viewchangeCanceled	chan struct {}
+
 }
 
 type MsgLogs struct {
@@ -104,6 +105,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		//F: (totNodes - 1) / 3,
 		F: (totNodes-1) / 3,
 		B: 0,
+		//succChkPointDelete: 0,
 	}
 
 	return state
@@ -200,7 +202,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 	// Verify if v, n(a.k.a. sequenceID), d are correct.
 	if err := state.verifyMsg(prepareMsg.ViewID, prepareMsg.SequenceID, prepareMsg.Digest); err != nil {
 		state.SetBizantine(prepareMsg.NodeID)
-		voteMsg.MsgType = REJECT 				
+		//voteMsg.MsgType = REJECT 				
 		//return nil, errors.New("pre-prepare message is corrupted: " + err.Error() + " (operation: " + prePrepareMsg.RequestMsg.Operation + ")")
 	}
 	return voteMsg, nil
@@ -244,7 +246,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
-	if int(newTotalVoteMsg) == 2*state.F - state.B + 1 && state.prepared() &&
+	if int(newTotalVoteMsg) == 2*state.F + 1 && state.prepared() &&
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
 	   	collateMsg := CollateMsg{
@@ -269,7 +271,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, bool, error) {
 	if err := state.verifyMsg(collateMsg.ViewID, collateMsg.SequenceID, collateMsg.Digest); err != nil {
 		state.SetBizantine(collateMsg.NodeID)
 		//return nil, nil, errors.New("commit message is corrupted: " + err.Error() + " (nodeID: " + commitMsg.NodeID + ")")
-		return newcollateMsg, false,errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
+		return newcollateMsg, false, errors.New("collate message is corrupted: " + err.Error() + " (nodeID: " + collateMsg.NodeID + ")")
 	}
 
 	// Append msg to its logs
@@ -325,7 +327,7 @@ func (state *State) Commit()(*ReplyMsg, *PrepareMsg) {
 		// Nodes must execute the requested operation
 		// locally and assign the result into reply message,
 		// with considering their operation ordering policy.
-		Result: "",
+		Result: "EXCUTE",
 	}, state.MsgLogs.PrepareMsg
 }
 func (State *State) Collating(){
@@ -472,11 +474,11 @@ func (state *State) GetCancelTimerCh(phase string) (chan struct {}){
 func (state *State) verifyMsg(viewID int64, sequenceID int64, digestGot string) error {
 	// Wrong view. That is, wrong configurations of peers to start the consensus.
 	if state.ViewID != viewID {
-		return fmt.Errorf("state.ViewID = %d, viewID = %d", state.ViewID, viewID)
+		return fmt.Errorf("verifyMsg ERROR state.ViewID = %d, viewID = %d", state.ViewID, viewID)
 	}
 
 	if state.SequenceID != sequenceID {
-		return fmt.Errorf("state.SequenceID = %d, sequenceID = %d", state.SequenceID, sequenceID)
+		return fmt.Errorf("verifyMsg ERROR state.SequenceID = %d, sequenceID = %d", state.SequenceID, sequenceID)
 	}
 
 	//digest, err := Digest(state.MsgLogs.ReqMsg)
@@ -527,9 +529,29 @@ func (state *State) committed() bool {
 	}
 
 	//if int(atomic.LoadInt32(&state.MsgLogs.TotalCommitMsg)) < 2*state.F + 1 {
-	if int(atomic.LoadInt32(&state.MsgLogs.TotalCollateMsg)) <= state.F - state.B {
+	if int(atomic.LoadInt32(&state.MsgLogs.TotalCollateMsg)) <= 2*state.F + 1 {
 		return false
 	}
 
 	return true
+}
+
+func (state *State) SetReqMsg(request *RequestMsg) {
+	state.MsgLogs.ReqMsg = request
+}
+
+func (state *State) SetPrepareMsg(prepareMsg *PrepareMsg) {
+	state.MsgLogs.PrepareMsg = prepareMsg
+}
+
+func (state *State) SetSequenceID(sequenceID int64) {
+	state.SequenceID = sequenceID
+}
+
+func (state *State) SetDigest(digest string) {
+	state.MsgLogs.Digest = digest
+}
+
+func (state *State) SetViewID(viewID int64) {
+	state.ViewID = viewID
 }

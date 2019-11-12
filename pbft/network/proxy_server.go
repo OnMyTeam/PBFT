@@ -15,7 +15,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 500
+const sendPeriod time.Duration = 200
 type Server struct {
 	url  string
 	node *Node
@@ -64,7 +64,7 @@ func (server *Server) setRoute(path string) {
 }
 
 func (server *Server) Start() {
-	log.Printf("Server will be started at %s...\n", server.url)
+	log.Printf("%s Server will be started at %s...\n", server.node.MyInfo.NodeID, server.url)
 
 	go server.DialOtherNodes()
 
@@ -116,7 +116,6 @@ func (server *Server) DialOtherNodes() {
 
 func (server *Server) setReceiveLoop(path string, nodeInfo *NodeInfo) *websocket.Conn {
 	u := url.URL{Scheme: "ws", Host: nodeInfo.Url, Path: path}
-
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Fatal("dial:", err)
@@ -124,7 +123,6 @@ func (server *Server) setReceiveLoop(path string, nodeInfo *NodeInfo) *websocket
 	}
 	log.Printf("connecting to %s from %s for %s", nodeInfo.NodeID, server.node.MyInfo.NodeID,path)
 	//log.Println("sRL local addr : ",c.LocalAddr(),"sRL remote addr : ",c.RemoteAddr())
-
 	go server.receiveLoop(c, path, nodeInfo)
 
 	return c
