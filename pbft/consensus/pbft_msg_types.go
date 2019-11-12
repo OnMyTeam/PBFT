@@ -22,7 +22,6 @@ type ReplyMsg struct {
 type PrepareMsg struct {
 	ViewID     int64       `json:"viewID"`
 	SequenceID int64       `json:"sequenceID"`
-	RequestMsg *RequestMsg `json:"requestMsg"`
 	Digest     string      `json:"digest"`
 	EpochID 	int64      `json:"epochID"`
 	NodeID      string     `json:"nodeID"`
@@ -48,7 +47,10 @@ type CollateMsg struct {
 	MsgType             MsgType				`json:"msgType"`
 	NodeID              string     			`json:"nodeID"`
 }
-
+type ReqPrePareMsgs struct {
+	RequestMsg *RequestMsg 
+	PrepareMsg *PrepareMsg 
+}
 type SignatureMsg struct {
 	// signature
 	//Signature []byte `json:"signature"`

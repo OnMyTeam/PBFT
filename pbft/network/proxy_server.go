@@ -156,9 +156,10 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 		}
 		switch marshalledMsg.MsgType {
 		case "/prepare":
-			var msg consensus.PrepareMsg
+			// ReqPrePareMsgs have RequestMsg and PrepareMsg
+			var msg consensus.ReqPrePareMsgs
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
-			if msg.SequenceID == 0 {
+			if msg.PrepareMsg.SequenceID == 0 {
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
@@ -293,23 +294,27 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(*consensus.Signat
 }
 func dummyMsg(operation string, clientID string, data []byte, 
 		viewID int64, sID int64, nodeID string) []byte {
-	var msg1 consensus.RequestMsg
-	msg1.Timestamp = time.Now().UnixNano()
-	msg1.Operation = operation
-	msg1.ClientID = clientID
-	msg1.Data = string(data)
+	var RequestMsg consensus.RequestMsg
+	RequestMsg.Timestamp = time.Now().UnixNano()
+	RequestMsg.Operation = operation
+	RequestMsg.ClientID = clientID
+	RequestMsg.Data = string(data)
+	RequestMsg.SequenceID = sID
+	
+	digest, err := consensus.Digest(RequestMsg)
 
-	digest, err := consensus.Digest(msg1)
+	var PrepareMsg consensus.PrepareMsg
+	PrepareMsg.ViewID = viewID
+	PrepareMsg.SequenceID = sID
+	PrepareMsg.Digest = digest
+	PrepareMsg.EpochID = 0
+	PrepareMsg.NodeID = nodeID
 
-	var msg2 consensus.PrepareMsg
-	msg2.ViewID = viewID
-	msg2.SequenceID = sID
-	msg2.RequestMsg = &msg1
-	msg2.Digest = digest
-	msg2.EpochID = 0
-	msg2.NodeID = nodeID
+	var ReqPrePareMsgs consensus.ReqPrePareMsgs
+	ReqPrePareMsgs.RequestMsg = &RequestMsg
+	ReqPrePareMsgs.PrepareMsg = &PrepareMsg
 
-	jsonMsg, err := json.Marshal(msg2)
+	jsonMsg, err := json.Marshal(ReqPrePareMsgs)
 	if err != nil {
 		log.Println(err)
 		return nil

@@ -41,7 +41,7 @@ type State struct {
 }
 
 type MsgLogs struct {
-	//ReqMsg        *RequestMsg
+	ReqMsg        *RequestMsg
 	Digest 			string
 	//PrePrepareMsg *PrePrepareMsg
 	//PrepareMsgs   map[string]*VoteMsg
@@ -77,7 +77,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		ViewID: viewID,
 		NodeID: nodeID,
 		MsgLogs: &MsgLogs{
-			//ReqMsg:        nil,
+			ReqMsg:        nil,
 			//PrePrepareMsg: nil,
 			//PrepareMsgs:   make(map[string]*VoteMsg),
 			//CommitMsgs:    make(map[string]*VoteMsg),
@@ -157,7 +157,7 @@ func (state *State) StartConsensus(request *RequestMsg, sequenceID int64) (*Prep
 	return prepareMsg, nil
 }
 */
-func (state *State) Prepare(prepareMsg *PrepareMsg) (VoteMsg, error) {
+func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (VoteMsg, error) {
 	var voteMsg VoteMsg
 	// case1: Prepare Timer expires.. sending NULLMSG
 	if prepareMsg == nil {	
@@ -171,15 +171,15 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (VoteMsg, error) {
 		}
 		return voteMsg, nil
 	}
-	digest, err := Digest(prepareMsg.RequestMsg)
+	digest, err := Digest(state.MsgLogs.ReqMsg)
 	if err != nil {
 		return voteMsg, err
 	}
 	state.MsgLogs.Digest = digest
+	state.MsgLogs.ReqMsg = requestMsg
 	// case2: prepareMsg which arrived in right time
 	// Log PREPARE message.
 	state.MsgLogs.PrepareMsg = prepareMsg
-
 	// From TOCS: The primary picks the "ordering" for execution of
 	// operations requested by clients. It does this by assigning
 	// the next available `sequence number` to a request and sending
@@ -212,7 +212,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	if voteMsg == nil {		//Timeout.. sending null-msg
 		collateMsg = CollateMsg{
 	   		//ReceivedPrepare:	state.MsgLogs.PrepareMsg,
-	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		ReceivedVoteMsg:	make(map[string]*VoteMsg),
 	   		SentVoteMsg:    	state.MsgLogs.SentVoteMsg,
 	   		ViewID:				state.ViewID,
 	   		Digest:				state.MsgLogs.Digest,
@@ -220,6 +220,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	   		SequenceID:			state.SequenceID,
 	   		MsgType:			UNCOMMITTED,
 		}
+		collateMsg.ReceivedVoteMsg = state.MsgLogs.VoteMsgs
 		return collateMsg, nil
 	}
 
@@ -248,7 +249,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	   	// Create COLLATE message.
 	   	collateMsg := CollateMsg{
 	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
-	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		ReceivedVoteMsg:	make(map[string]*VoteMsg),
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
 	   		Digest:		state.MsgLogs.Digest,
@@ -256,6 +257,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	   		SequenceID:	state.SequenceID,
 	   		MsgType:	COMMITTED,
 	   	}
+		collateMsg.ReceivedVoteMsg = state.MsgLogs.VoteMsgs
 		return collateMsg, nil
 	}
 
@@ -371,7 +373,7 @@ func (state *State) GetMsgExitSendChannel() chan<- int64 {
 
 func (state *State) GetReqMsg() *RequestMsg {
 	//return state.MsgLogs.ReqMsg
-	return state.MsgLogs.PrepareMsg.RequestMsg
+	return state.MsgLogs.ReqMsg
 }
 func (state *State) GetPrepareMsg() *PrepareMsg {
 	return state.MsgLogs.PrepareMsg

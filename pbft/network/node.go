@@ -139,7 +139,7 @@ func (node *Node) Reply(msg *consensus.ReplyMsg) {
 	// Broadcast reply.
 	//node.Broadcast(*msg, "/reply")
 }
-func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
+func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 	//time.Sleep(time.Millisecond*sendPeriod)
 
 	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
@@ -167,7 +167,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 			switch msg := msgState.(type) {
 			//case *consensus.PrePrepareMsg:
 			//	node.GetPrePrepare(state, msg)
-			case *consensus.PrepareMsg:
+			case *consensus.ReqPrePareMsgs:
 				node.GetPrepare(state, msg)
 			case *consensus.VoteMsg:
 				node.GetVote(state, msg)
@@ -181,10 +181,12 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 	}
 }
 
-func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.PrepareMsg) {
+func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
+	prepareMsg := ReqPrePareMsgs.PrepareMsg
+	requestMsg := ReqPrePareMsgs.RequestMsg
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
-	voteMsg, err := state.Prepare(prepareMsg)
+	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
@@ -228,10 +230,17 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		node.TimerStop(state, "Vote")
 
 		if node.Committed[voteMsg.SequenceID] == 0 {
-			fmt.Printf("[Committed] vote is in executed\n")
+			fmt.Printf("[Committed] %d vote is in executed \n", voteMsg.SequenceID)
 			atomic.AddInt64(&node.Committed[voteMsg.SequenceID], 1)
 			node.Broadcast(collateMsg, "/collate")
-			ch := node.States[collateMsg.SequenceID].GetMsgExitSendChannel()
+			state, err := node.getState(collateMsg.SequenceID)
+			if err != nil {
+				// Print error.
+				node.MsgError <- []error{err}
+				// Send message into dispatcher.
+				return
+			}			
+			ch := state.GetMsgExitSendChannel()
 			ch <- 0
 		}
 
@@ -245,6 +254,9 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		}
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
+	fmt.Printf("[GetCollate] to %s from %s sequenceID: %d\n", 
+					node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID)
+	
 	newcollateMsg, isVoting, err := state.Collate(collateMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -293,13 +305,13 @@ func (node *Node) resolveMsg() {
 		switch msg := msgDelivered.(type) {
 		// If even the previous sequence of entered sequence thread is not created
 		// ignore the entered message.
-		case *consensus.PrepareMsg:
-			state, err = node.getState(msg.SequenceID)
+		case *consensus.ReqPrePareMsgs:
+			state, err = node.getState(msg.PrepareMsg.SequenceID)
 			if state != nil {
 				ch := state.GetMsgSendChannel()
 				ch <- msg
 			} else {
-				if msg.SequenceID == 1 {
+				if msg.PrepareMsg.SequenceID == 1 {
 					node.startTransitionWithDeadline(msg)
 				}
 			}
