@@ -223,6 +223,9 @@ func (server *Server) sendDummyMsg() {
 	for  {
 		select {
 		case <-ticker.C:
+			if server.node.IsViewChanging {
+				continue
+			}
 			primaryNode := server.node.getPrimaryInfoByID(currentView) 
 			currentView++
 			sequenceID += 1
@@ -231,6 +234,7 @@ func (server *Server) sendDummyMsg() {
 				continue
 			}
 			u:=primaryNode.Url + "/prepare"
+
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
 				server.node.MyInfo.NodeID)	

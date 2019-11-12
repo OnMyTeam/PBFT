@@ -38,6 +38,7 @@ type State struct {
 	voteCanceled		chan struct {}
 	collateCanceled		chan struct {}
 	viewchangeCanceled	chan struct {}
+
 }
 
 type MsgLogs struct {
@@ -104,6 +105,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		//F: (totNodes - 1) / 3,
 		F: (totNodes-1) / 3,
 		B: 0,
+		//succChkPointDelete: 0,
 	}
 
 	return state
@@ -241,7 +243,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	state.MsgLogs.VoteMsgsMutex.Unlock()
 	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
 
-
+	fmt.Println("newTotalVoteMsg", newTotalVoteMsg)
 
 	// Return commit message only once.
 	//if int(newTotalVoteMsg) >= 2*state.F && state.prepared() &&
@@ -531,4 +533,24 @@ func (state *State) committed() bool {
 	}
 
 	return true
+}
+
+func (state *State) SetReqMsg(request *RequestMsg) {
+	state.MsgLogs.PrepareMsg.RequestMsg = request
+}
+
+func (state *State) SetPrepareMsg(prepareMsg *PrepareMsg) {
+	state.MsgLogs.PrepareMsg = prepareMsg
+}
+
+func (state *State) SetSequenceID(sequenceID int64) {
+	state.SequenceID = sequenceID
+}
+
+func (state *State) SetDigest(digest string) {
+	state.MsgLogs.Digest = digest
+}
+
+func (state *State) SetViewID(viewID int64) {
+	state.ViewID = viewID
 }

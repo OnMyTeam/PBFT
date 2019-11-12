@@ -36,4 +36,13 @@ type PBFT interface {
 	GetPhaseTimer(phase string) (*time.Timer)
 	GetCancelTimerCh(phase string) (chan struct {})
 	SetTimer(phase string)
+
+	//SetSuccChkPoint(int64)
+	SetSequenceID(sequenceID int64)
+	SetDigest(digest string)
+	SetViewID(viewID int64)
+
+	//setrequ
+	ClearMsgLogs()
+	Redo_SetState(viewID int64, nodeID string, totNodes int, prepareMsg *PrepareMsg, digest string) *State
 }
