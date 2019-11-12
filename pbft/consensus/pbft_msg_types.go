@@ -37,19 +37,19 @@ type VoteMsg struct {
 	SequenceID int64  		`json:"sequenceID"`
 	Digest     string 		`json:"digest"`
 	NodeID     string 		`json:"nodeID"`
-	MsgType           		`json:"msgType"`
-	PrepareMsg 	*PrepareMsg `json:"prepareMsg"`
+	MsgType     		`json:"msgType"`
+	//PrepareMsg 	*PrepareMsg `json:"prepareMsg"`
 }
 
 //Adaptive BFT
 type CollateMsg struct {
-	ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
-	ReceivedVoteMsg     map[string]*VoteMsg `json:"commit_proof"`
-	SentVoteMsg         *VoteMsg   			`json:"sent_vote_msg"`
+	// ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
+	ReceivedVoteMsg     map[string]*VoteMsg `json:"commitproof"`
+	SentVoteMsg         *VoteMsg   			`json:"sentvotemsg"`
 	ViewID              int64      			`json:"viewID"`
 	SequenceID          int64      			`json:"sequenceID"`
 	Digest              string     			`json:"digest"`
-	MsgType             MsgType				`json:"msgType"`
+	MsgType             				`json:"msgType"`
 	NodeID              string     			`json:"nodeID"`
 }
 

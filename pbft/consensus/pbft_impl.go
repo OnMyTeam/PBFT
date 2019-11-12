@@ -164,7 +164,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 		voteMsg := &VoteMsg{
 			ViewID: state.ViewID,
 			Digest: state.MsgLogs.Digest,
-			PrepareMsg: prepareMsg,
+			//PrepareMsg: prepareMsg,
 			NodeID: "",
 			SequenceID: state.SequenceID, 				//This sequence number is already known..
 			MsgType: NULLMSG,
@@ -191,7 +191,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg) (*VoteMsg, error) {
 	voteMsg := &VoteMsg{
 		ViewID: state.ViewID,
 		Digest: state.MsgLogs.Digest,
-		PrepareMsg: prepareMsg,
+		//PrepareMsg: prepareMsg,
 		NodeID: "",
 		SequenceID: state.SequenceID,
 		MsgType: VOTE,
@@ -211,7 +211,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	// case1: Vote Timer expires.. sending UNCOMMITTED
 	if voteMsg == nil {		//Timeout.. sending null-msg
 		collateMsg := &CollateMsg{
-	   		ReceivedPrepare:	state.MsgLogs.PrepareMsg,
+	   		// ReceivedPrepare:	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:    	state.MsgLogs.SentVoteMsg,
 	   		ViewID:				state.ViewID,
@@ -249,8 +249,8 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	    atomic.CompareAndSwapInt32(&state.MsgLogs.commitMsgSent, 0, 1) {
 	   	// Create COLLATE message.
 	   	collateMsg := &CollateMsg{
-	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
-	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+	   		// ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   		ReceivedVoteMsg:	make(map[string]*VoteMsg),
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
 	   		Digest:		state.MsgLogs.Digest,
@@ -258,6 +258,7 @@ func (state *State) Vote(voteMsg *VoteMsg) (*CollateMsg, error){
 	   		SequenceID:	state.SequenceID,
 	   		MsgType:	COMMITTED,
 	   	}
+		collateMsg.ReceivedVoteMsg = state.MsgLogs.VoteMsgs
 		return collateMsg, nil
 	}
 
@@ -301,7 +302,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (*CollateMsg,bool, error) {
 	}
 	if commitFlag == true {
 		return &CollateMsg{
-	   		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+	   		// ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
 	   		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
 	   		ViewID:		state.ViewID,
@@ -324,7 +325,7 @@ func (state *State) Commit()(*ReplyMsg, *PrepareMsg) {
 		// Nodes must execute the requested operation
 		// locally and assign the result into reply message,
 		// with considering their operation ordering policy.
-		Result: "",
+		Result: "EXCUTE",
 	}, state.MsgLogs.PrepareMsg
 }
 func (State *State) Collating(){

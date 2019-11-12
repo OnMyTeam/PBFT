@@ -64,7 +64,7 @@ type MsgOut struct {
 }
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 5000
+const ConsensusDeadline = time.Millisecond * 2000
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -132,7 +132,6 @@ func (node *Node) Broadcast(msg interface{}, path string) {
 		node.MsgError <- []error{err}
 		return
 	}
-
 	node.MsgOutbound <- &MsgOut{Path: node.MyInfo.Url + path, Msg: jsonMsg}
 }
 
@@ -187,7 +186,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 			}
 		//case <-ch2:
 		case <-ctx.Done():
-			fmt.Println("thread finished...")
+			// fmt.Println("thread finished... ")
 			//time.Sleep(time.Millisecond*sendPeriod*10)
 			return
 		}
@@ -195,7 +194,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.PrepareMsg) {
 }
 
 func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.PrepareMsg) {
-	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
+	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n",
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	voteMsg, err := state.Prepare(prepareMsg)
 	if err != nil {
@@ -217,11 +216,10 @@ func (node *Node) GetPrepare(state consensus.PBFT, prepareMsg *consensus.Prepare
 
 	LogStage("Prepare", true)
 	node.Broadcast(voteMsg, "/vote")
-	fmt.Printf("[GetVote] %s Broad Cast sequenceID: %d \n", node.MyInfo.NodeID,prepareMsg.SequenceID)
+	fmt.Printf("[SendVote] %s Broad Cast sequenceID: %d \n", node.MyInfo.NodeID,prepareMsg.SequenceID)
 	node.GetVote(state, voteMsg)
 	LogStage("Vote", false)
 
-	node.GetVote(state, voteMsg)
 	go node.startTransitionWithDeadline(nil)
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
@@ -240,7 +238,6 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 
 	// Attach node ID to the message
 	collateMsg.NodeID = node.MyInfo.NodeID
-
 	switch collateMsg.MsgType {
 	case consensus.COMMITTED:
 		// node.TimerStop(state, "Vote")
@@ -251,10 +248,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		//sdf
 		// Pass the incomplete reply message through MsgExecution
 		// channel to run its operation sequentially.
+		node.Broadcast(collateMsg, "/collate")
 		node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
 
 		LogStage("Vote", true)
-		// node.Broadcast(collateMsg, "/collate")
+
 		// LogStage("Collate", false)
 
 		//Done
@@ -268,37 +266,64 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
 	// newcollateMsg, isVoting, err := state.Collate(collateMsg)
-	newcollateMsg, _, err := state.Collate(collateMsg)
-	if err != nil {
-		node.MsgError <- []error{err}
+	switch collateMsg.MsgType {
+		case consensus.COMMITTED:
+			fmt.Println("======= from ", collateMsg.NodeID, collateMsg.SequenceID, "=======" )
+			state, err := node.getState(collateMsg.SequenceID)
+			if err != nil {
+				return
+			}
+			for NodeID, VoteMsg := range state.GetVoteMsgs() {
+				if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] {
+					continue
+				}
+				state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
+			}
+			replyMsg, committedMsg := state.Commit()
+			// Attach node ID to the message
+			replyMsg.NodeID = node.MyInfo.NodeID
+			//sdf
+			// Pass the incomplete reply message through MsgExecution
+			// channel to run its operation sequentially.
+
+			node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
+
+		case consensus.UNCOMMITTED:
+			newcollateMsg, _, err := state.Collate(collateMsg)
+			if err != nil {
+				node.MsgError <- []error{err}
+			}
+
+			if newcollateMsg == nil { 	//Only COMMITTED msg is created
+				fmt.Println("newcollateMsg : ", newcollateMsg)
+				return
+			}
+
+			// if isVoting {		// vote timer is running.. collate timer is not running..
+			// 	node.TimerStop(state, "Vote")
+			// } else {							// vote timer is not running.. collate timer is running..
+			// 	node.TimerStop(state, "Collate")
+			// }
+
+			// Attach node ID to the message
+			newcollateMsg.NodeID = node.MyInfo.NodeID
+
+			LogStage("collate", true)
+			node.Broadcast(newcollateMsg, "/collate")
+			LogStage("commit", false)
+
+			replyMsg, committedMsg := state.Commit()
+
+			// Attach node ID to the message
+			replyMsg.NodeID = node.MyInfo.NodeID		
+			node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
+
 	}
 
-	if newcollateMsg == nil { 	//Only COMMITTED msg is created
-		fmt.Println("newcollateMsg : ", newcollateMsg)
-		return
-	}
-
-	// if isVoting {		// vote timer is running.. collate timer is not running..
-	// 	node.TimerStop(state, "Vote")
-	// } else {							// vote timer is not running.. collate timer is running..
-	// 	node.TimerStop(state, "Collate")
-	// }
-
-	// Attach node ID to the message
-	newcollateMsg.NodeID = node.MyInfo.NodeID
-
-	LogStage("collate", true)
-	node.Broadcast(newcollateMsg, "/collate")
-	LogStage("commit", false)
-
-	replyMsg, committedMsg := state.Commit()
-
-	// Attach node ID to the message
-	replyMsg.NodeID = node.MyInfo.NodeID
 
 	// Pass the incomplete reply message through MsgExecution
 	// channel to run its operation sequentially.
-	node.MsgExecution <- &MsgPair{replyMsg, committedMsg}
+	
 }
 
 func (node *Node) GetReply(msg *consensus.ReplyMsg) {
@@ -378,9 +403,10 @@ func (node *Node) resolveMsg() {
 				}
 			}
 		case *consensus.VoteMsg:
-			if int64(len(node.CommittedMsgs))>=msg.SequenceID&&node.CommittedMsgs[msg.SequenceID-1]!=nil {
-				continue
-			}
+			// fmt.Printf("Sequence for %d from %s \n",msg.SequenceID, msg.NodeID )
+			// if int64(len(node.CommittedMsgs))>=msg.SequenceID&&node.CommittedMsgs[msg.SequenceID-1]!=nil {
+			// 	continue
+			// }
 			if node.MyInfo.NodeID != msg.NodeID {
 				state, err = node.getState(msg.SequenceID)
 				if state != nil {
@@ -389,9 +415,6 @@ func (node *Node) resolveMsg() {
 				} 
 			}
 		case *consensus.CollateMsg:
-			if int64(len(node.CommittedMsgs))>=msg.SequenceID&&node.CommittedMsgs[msg.SequenceID-1]!=nil {
-				continue
-			}
 			if node.MyInfo.NodeID != msg.NodeID {
 				state, err = node.getState(msg.SequenceID)
 				if state != nil {
@@ -429,7 +452,7 @@ func (node *Node) executeMsg() {
 	pairs := make(map[int64]*MsgPair)
 	for {
 		msgPair := <-node.MsgExecution
-		fmt.Printf("%s have %d votemsg sequence for %d \n", node.MyInfo.NodeID, len(node.States[msgPair.committedMsg.SequenceID].GetVoteMsgs()), msgPair.committedMsg.SequenceID)
+		// fmt.Printf("%s have %d votemsg sequence for %d \n", node.MyInfo.NodeID, len(node.States[msgPair.committedMsg.SequenceID].GetVoteMsgs()), msgPair.committedMsg.SequenceID)
 		pairs[msgPair.committedMsg.SequenceID] = msgPair
 		committedMsgs = make([]*consensus.PrepareMsg, 0)
 
@@ -502,7 +525,6 @@ func (node *Node) sendMsg() {
 
 	for {
 		msg := <-node.MsgOutbound
-
 		// Goroutine for concurrent broadcast() with timeout
 		sem <- true
 		go func() {
@@ -537,7 +559,7 @@ func (node *Node) logErrorMsg() {
 				time.Sleep(CoolingTime)
 				coolingMsgLeft = CoolingTotalErrMsg
 			}
-			fmt.Println(err)
+			fmt.Println("??????",err)
 		}
 	}
 }
@@ -572,3 +594,4 @@ func (node *Node) TimerStop(state consensus.PBFT, phase string) {
 	state.GetPhaseTimer(phase).Stop()
 	state.GetCancelTimerCh(phase) <- struct {}{}
 	*/
+}
