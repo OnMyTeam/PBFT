@@ -18,6 +18,8 @@ func (node *Node) StartViewChange() {
 	// Create ViewChangeMsg.
 	viewChangeMsg := node.CreateViewChangeMsg(setp)
 
+	fmt.Printf("++++++++++++++++++++ I'm %s  \n", viewChangeMsg.NodeID)
+
 	// VIEW-CHANGE message created by this node will be received
 	// at this node as well as the other nodes.
 	node.Broadcast(viewChangeMsg, "/viewchange")
@@ -28,8 +30,8 @@ func (node *Node) StartViewChange() {
 func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	var vcs *consensus.VCState
 
-	LogMsg(viewchangeMsg)
-	fmt.Printf("++++ viewchangeMsg.NextViewID %d ++++++++++++++++++++ \n", viewchangeMsg.NextViewID)
+	//LogMsg(viewchangeMsg)
+	fmt.Printf("++++from %s ++++++++++++++++++++ \n", viewchangeMsg.NodeID)
 
 	// Ignore VIEW-CHANGE message if the next view id is not new.
 	var nextviewid = node.View.ID + 1
@@ -58,6 +60,8 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// From OSDI: When the primary of view v + 1 receives 2f valid
 	// view-change messages for view v + 1 from other replicas,
 	// it multicasts a NEW-VIEW message to all other replicas.
+
+	// TODO: changeleader
 	var nextPrimary = node.getPrimaryInfoByID(nextviewid)
 	if newViewMsg == nil || node.MyInfo != nextPrimary {
 		return
@@ -93,7 +97,6 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 	// Search min_s the sequence number of the latest stable checkpoint and
 	// max_s the highest sequence number in a prepare message in V.
 	var min_s int64 = 0
-	var max_s int64 = 0
 
 	fmt.Println("***********************N E W V I E W***************************")
 	for _, vcm := range newViewMsg.SetViewChangeMsgs {
@@ -141,6 +144,7 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 			if seq <= min_s{
 				continue
 			}
+			fmt.Println("========setpm.PrepareMsg.Digest ", setpm.PrepareMsg.Digest)
 			digest := setpm.PrepareMsg.Digest
 			newViewMsg.PrepareMsg = GetPrepareForNewview(newViewMsg.NextViewID, min_s, digest)
 		}
@@ -201,13 +205,14 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 	}
 	fmt.Println("committedMax : ", committedMax)
 	for committedMax < newviewMsg.Min_S {
-		var request consensus.RequestMsg
+		var prepare consensus.PrepareMsg
 		newSequenceID := committedMax + 1
-		request.SequenceID = newSequenceID
-		request.Operation = ""
-		request.Timestamp = int64(0)
-		request.Data = ""
-		request.ClientID = ""
+		prepare.SequenceID = newSequenceID
+		prepare.ViewID = int64(0)
+		prepare.Digest = ""
+		prepare.EpochID = 0
+		prepare.NodeID = ""
+
 		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
 		//node.CommittedMsgs = append(node.CommittedMsgs, &request)
 		committedMax += 1
@@ -218,58 +223,59 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		atomic.AddInt64(&node.TotalConsensus, 1)
 	}
 
-	// Fill the PrePrepare message from new-view message
-	for seq, prepareMsg := range newviewMsg.SetPrepareMsgs {
-		fmt.Println("newview seq : ", seq)
+	//Fill the PrePrepare message from new-view message
+	prepareMsg := newviewMsg.PrepareMsg
+	fmt.Println("newview seq : ", prepareMsg.SequenceID)
 
-		// preprepare.sequenceID could be higher than Max_S of SetPrePare
-		//if seq > newviewMsg.Max_S {
+	// preprepare.sequenceID could be higher than Max_S of SetPrePare
+	//if seq > newviewMsg.Max_S {
 
-		//	continue
-		//}
+	//	continue
+	//}
 
-		// node.StatesMutex.Lock()
-		var state consensus.PBFT
-		state, err := node.getState(seq)
-		if err != nil {
-			// Print error.
-		}
-		if state != nil {
-			// Fill the committedMax if it is not committed
-			if seq > committedMax {
-				fmt.Println("no request in node.CommittedMsgs : ", seq)
+	// node.StatesMutex.Lock()
+	var state consensus.PBFT
+	state, err := node.getState(prepareMsg.SequenceID)
+	if err != nil {
+		// Print error.
+	}
+	if state != nil {
+		// Fill the committedMax if it is not committed
+		if prepareMsg.SequenceID > committedMax {
+			fmt.Println("no request in node.CommittedMsgs : ", prepareMsg.SequenceID)
 				//node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
-			}
+		}
 			// Initalize all of logs of this state
-			state.ClearMsgLogs()
+		state.ClearMsgLogs()
 
 			// Change the viewid, preprepare message and preprepare message's digest of the state
-			node.States[seq] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
+		node.States[prepareMsg.SequenceID] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
 
-		} else { //if this node does not have state and a request with sequence number n (prePrepareMsg.SequenceID)
+	} else { //if this node does not have state and a request with sequence number n (prePrepareMsg.SequenceID)
 			// Fill the state of the sequence number of prePrepareMsg
-			state := node.createState(0)
+		state := node.createState(0)
 
-			state.SetSequenceID(prepareMsg.SequenceID)
-			// Log REQUEST message.
-			var request consensus.RequestMsg
-			request.SequenceID = seq
-			request.Operation = ""
-			request.Timestamp = int64(0)
-			request.Data = ""
-			request.ClientID = ""
+		state.SetSequenceID(prepareMsg.SequenceID)
+		// Log REQUEST message.
+		var prepare consensus.PrepareMsg
+		prepare.SequenceID = prepareMsg.SequenceID
+		prepare.ViewID = int64(0)
+		prepare.Digest = ""
+		prepare.EpochID = int64(0)
+		prepare.NodeID = ""
+
 			//state.SetReqMsg(&request)
-			fmt.Println("no request in node.CommittedMsgs : ", seq)
+		fmt.Println("no request in node.CommittedMsgs : ", prepareMsg.SequenceID)
 			// Fill request message in the committedMax
 			//node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
 			
 			// Change the viewid, preprepare message and preprepare message's digest of the state
-			node.States[seq] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
+		node.States[prepareMsg.SequenceID] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
 
-			atomic.AddInt64(&node.TotalConsensus, 1)
-		}
-		//node.StatesMutex.Unlock()
+		atomic.AddInt64(&node.TotalConsensus, 1)
 	}
+	//node.StatesMutex.Unlock()
+
 }
 
 func (node *Node) updateView(viewID int64) {
@@ -282,7 +288,8 @@ func (node *Node) isMyNodePrimary() bool {
 }
 
 func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
-	viewIdx := viewID % int64(len(node.NodeTable))
+	var Epoch int64 = 4
+	viewIdx := viewID % Epoch
 	return node.NodeTable[viewIdx]
 }
 
@@ -325,4 +332,8 @@ func (node *Node) CreateViewChangeMsg(setp map[int64]*consensus.SetPm) *consensu
 		//SetC: setc,
 		SetP: setp,
 	}
+}
+
+func (node *Node) ChangeLeader(){
+
 }

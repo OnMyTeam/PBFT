@@ -42,7 +42,7 @@ func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64, decodePrivKey
 	}
 
 	server.setRoute("/prepare")
-	//server.setRoute("/vote")
+	server.setRoute("/vote")
 	//server.setRoute("/collate")
 	//server.setRoute("/reply")
 	// View change.
@@ -105,9 +105,9 @@ func (server *Server) DialOtherNodes() {
 		//cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
 		//cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
-	if server.node.MyInfo.NodeID == "Node1"{
-		go server.sendDummyMsg()
-	}
+	
+	go server.sendDummyMsg()
+	
 	// Wait.
 	select {}
 
@@ -182,17 +182,19 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			var msg consensus.ReplyMsg
 			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
 			server.node.MsgEntrance <- &msg
-			/*
+		/*
 		case "/checkpoint":
 			var msg consensus.CheckPointMsg
 			server.node.MsgEntrance <- &msg
+		 */
 		case "/viewchange":
 			var msg consensus.ViewChangeMsg
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
 			server.node.ViewMsgEntrance <- &msg
 		case "/newview":
 			var msg consensus.NewViewMsg
+			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
 			server.node.ViewMsgEntrance <- &msg
-			 */
 		}
 	}
 }
@@ -200,26 +202,29 @@ func (server *Server) sendDummyMsg() {
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
 
-	//data := make([]byte, 1 << 20)
 	data := make([]byte, 1 << 20)
 	for i := range data {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
-	//currentView := server.node.View.ID
+	currentView := server.node.View.ID
 
 	sequenceID := 0
 
 	for  {
 		select {
 		case <-ticker.C:
-			//primaryNode := server.node.getPrimaryInfoByID(currentView)
-			//currentView++
-			sequenceID += 1
-
-			//if primaryNode.NodeID != server.node.MyInfo.NodeID {
+			//if server.node.IsViewChanging {
 			//	continue
 			//}
+			primaryNode := server.node.getPrimaryInfoByID(currentView)
+			currentView++
+			sequenceID += 1
+
+			if primaryNode.NodeID != server.node.MyInfo.NodeID {
+				continue
+			}
+
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
 				server.node.MyInfo.NodeID)	

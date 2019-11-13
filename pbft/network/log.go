@@ -29,8 +29,8 @@ func LogMsg(msg interface{}) {
 		fmt.Printf("%d: [REPLY] Result: %s by %s\n", t, m.Result, m.NodeID)
 	//case *consensus.CheckPointMsg:
 	//	fmt.Printf("%d: [CheckPointMsg] NodeID: %s\n", t, m.NodeID)
-	//case *consensus.ViewChangeMsg:
-	//	fmt.Printf("%d: [ViewChangeMsg] NodeID: %s\n", t, m.NodeID)
+	case *consensus.ViewChangeMsg:
+		fmt.Printf("%d: [ViewChangeMsg] NodeID: %s\n", t, m.NodeID)
 	}
 }
 

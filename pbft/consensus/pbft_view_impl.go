@@ -71,6 +71,7 @@ func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error
 	fmt.Printf("[View-Change-Vote]: %d\n", newTotalViewchangeMsg)
 
 	// Return NEW-VIEW message only once.
+	// TODO: 2*vcs.f + 1 - Adaptive Quorum 
 	if int(newTotalViewchangeMsg) >= 2*vcs.f + 1 &&
 	   atomic.CompareAndSwapInt32(&vcs.ViewChangeMsgLogs.msgSent, 0, 1) {
 		return &NewViewMsg{
