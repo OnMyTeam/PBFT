@@ -15,7 +15,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 200
+const sendPeriod time.Duration = 1000
 type Server struct {
 	url  string
 	node *Node
@@ -224,7 +224,6 @@ func (server *Server) sendDummyMsg() {
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}
-
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
 				server.node.MyInfo.NodeID)	
