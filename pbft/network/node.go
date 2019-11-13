@@ -70,7 +70,7 @@ type MsgOut struct {
 }
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 5000
+const ConsensusDeadline = time.Millisecond * 350
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -197,25 +197,27 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 		case <-ch2:
 			//return
 		case <-ctx.Done(): 
-			// //node.GetPrepare(state, nil)
-			// fmt.Println("Start ViewChange...")
-			// var lastCommittedMsg *consensus.PrepareMsg = nil
-			// msgTotalCnt := len(node.CommittedMsgs)
-			// if msgTotalCnt > 0 {
-			// 	lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
-			// }
+			//node.GetPrepare(state, nil)
 		
-			// if msgTotalCnt == 0 ||
-			// 	 lastCommittedMsg.SequenceID < state.GetSequenceID() {
-			// 	//startviewchange
-			// 	node.IsViewChanging = true
-			// 	// Broadcast view change message.
-			// 	node.MsgError <- []error{ctx.Err()}
-			// 	if state.GetSequenceID() == int64(1) {
-			// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
-			// 		node.StartViewChange()
-			// 	}
-			// }
+			var lastCommittedMsg *consensus.PrepareMsg = nil
+			msgTotalCnt := int64(len(node.CommittedMsgs))
+			fmt.Println("--------msgTotalCnt", msgTotalCnt)
+			if msgTotalCnt > 0 {
+				lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
+			}
+			fmt.Println("--------lastCommittedMsg", lastCommittedMsg.SequenceID)
+			fmt.Println("--------	state.GetSequenceID()", 	state.GetSequenceID())
+		
+			if msgTotalCnt == 0 ||
+				lastCommittedMsg.SequenceID < state.GetSequenceID() {
+				//startviewchange
+				node.IsViewChanging = true
+				// Broadcast view change message.
+				node.MsgError <- []error{ctx.Err()}
+				fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
+				fmt.Println("Start ViewChange...")
+				node.StartViewChange()
+			}
 			return
 		
 		}

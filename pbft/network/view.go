@@ -139,14 +139,15 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 	// }
 	// newViewMsg.SetPrepareMsgs = newMap
 	
+
 	for _, vcm := range newViewMsg.SetViewChangeMsgs {
-		for seq, setpm := range vcm.SetP {
+		for seq, _ := range vcm.SetP {
 			if seq <= min_s{
 				continue
 			}
-			fmt.Println("========setpm.PrepareMsg.Digest ", setpm.PrepareMsg.Digest)
-			digest := setpm.PrepareMsg.Digest
-			newViewMsg.PrepareMsg = GetPrepareForNewview(newViewMsg.NextViewID, min_s, digest)
+			//fmt.Println("========setpm.PrepareMsg.Digest ", setpm.PrepareMsg.Digest)
+			//digest := setpm.PrepareMsg.Digest
+			newViewMsg.PrepareMsg = GetPrepareForNewview(newViewMsg.NextViewID, min_s)
 		}
 	}
 
@@ -199,14 +200,14 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 	// Currunt Max sequence number of committed request
 	var committedMax int64 = 0
 	for seq, _ := range node.CommittedMsgs{
-		if committedMax <= int64(seq+1) {
-			committedMax = int64(seq+1)
+		if committedMax <= int64(seq) {
+			committedMax = int64(seq)
 		}
 	}
 	fmt.Println("committedMax : ", committedMax)
 	for committedMax < newviewMsg.Min_S {
 		var prepare consensus.PrepareMsg
-		newSequenceID := committedMax + 1
+		newSequenceID := committedMax
 		prepare.SequenceID = newSequenceID
 		prepare.ViewID = int64(0)
 		prepare.Digest = ""
@@ -293,11 +294,11 @@ func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
 	return node.NodeTable[viewIdx]
 }
 
-func GetPrepareForNewview(nextviewID int64, sequenceid int64, digest string) *consensus.PrepareMsg {
+func GetPrepareForNewview(nextviewID int64, sequenceid int64) *consensus.PrepareMsg {
 	return &consensus.PrepareMsg{
 		ViewID:     nextviewID,
 		SequenceID: sequenceid,
-		Digest:     digest,
+		Digest:     "",
 	}
 }
 
