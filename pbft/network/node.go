@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"time"
-
+	"context"
 	"crypto/ecdsa"
 	//"log"
 	"sync"
@@ -152,14 +152,14 @@ func (node *Node) Reply(msg *consensus.ReplyMsg) {
 func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 	// time.Sleep(time.Millisecond*sendPeriod)
 	// Set deadline based on the given timestamp.
-	// var timeStamp int64 = time.Now().UnixNano()
-	// sec := timeStamp / int64(time.Second)
-	// nsec := timeStamp % int64(time.Second)
-	// d := time.Unix(sec, nsec).Add(ConsensusDeadline)
-	// ctx, cancel := context.WithDeadline(context.Background(), d)
-	// defer cancel()
+	var timeStamp int64 = time.Now().UnixNano()
+	sec := timeStamp / int64(time.Second)
+	nsec := timeStamp % int64(time.Second)
+	d := time.Unix(sec, nsec).Add(ConsensusDeadline)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
 	// Check the time is skewed.
-	// timeDiff := time.Until(d).Nanoseconds()
+	//timeDiff := time.Until(d).Nanoseconds()
 
 
 	newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
