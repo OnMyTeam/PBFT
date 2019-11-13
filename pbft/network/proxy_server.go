@@ -15,7 +15,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 200
+const sendPeriod time.Duration = 1000
 type Server struct {
 	url  string
 	node *Node
@@ -105,9 +105,10 @@ func (server *Server) DialOtherNodes() {
 		//cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
 		//cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
-	if server.node.MyInfo.NodeID == "Node1"{
-		go server.sendDummyMsg()
-	}
+	// if server.node.MyInfo.NodeID == "Node1"{
+		
+	// }
+	go server.sendDummyMsg()
 	// Wait.
 	select {}
 
@@ -206,20 +207,20 @@ func (server *Server) sendDummyMsg() {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
-	//currentView := server.node.View.ID
+	currentView := server.node.View.ID
 
 	sequenceID := 0
 
 	for  {
 		select {
 		case <-ticker.C:
-			//primaryNode := server.node.getPrimaryInfoByID(currentView)
-			//currentView++
+			primaryNode := server.node.getPrimaryInfoByID(currentView)
+			currentView++
 			sequenceID += 1
 
-			//if primaryNode.NodeID != server.node.MyInfo.NodeID {
-			//	continue
-			//}
+			if primaryNode.NodeID != server.node.MyInfo.NodeID {
+				continue
+			}
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
 				server.node.MyInfo.NodeID)	
