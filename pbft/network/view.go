@@ -12,6 +12,33 @@ func (node *Node) StartViewChange() {
 	// Start_ViewChange
 	LogStage("ViewChange", false)
 
+	var lastCommittedMsg *consensus.PrepareMsg = nil
+	msgTotalCnt := int64(len(node.CommittedMsgs))
+	if msgTotalCnt > 0 {
+		lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
+	}
+
+	for i := int64(lastCommittedMsg.SequenceID+1); i <= node.TotalConsensus; i++ {
+		fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
+		
+		state, _ := node.getState(i)
+		if i != lastCommittedMsg.SequenceID+1 {
+			fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
+			ch2 := state.GetMsgExitSendChannel()
+			ch2 <- 0
+		}
+		if node.CommittedMsgs[i] != nil {
+			delete(node.CommittedMsgs, i)
+		}
+		if node.Committed[i] != 0 {
+			node.Committed[i] = 0
+		}
+		if node.Prepared[i] != 0 {
+			node.Prepared[i] = 0
+		}
+		delete(node.States, i)
+	}
+
 	// Create SetP.
 	setp := node.CreateSetP()
 
@@ -157,13 +184,52 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// TODO verify new-view message
+	fmt.Printf("<<<<<<<<<<<<<<<<NewView>>>>>>>>>>>>>>>>: %d by %s\n", newviewMsg.NextViewID, newviewMsg.NodeID)
+
+	//////////////////////////////////////////////////////////////////////////
+	if node.IsViewChanging == false {
+		node.IsViewChanging = true
+		var totalcon int64 = node.TotalConsensus
+		for i := newviewMsg.Min_S+1; i <= totalcon; i++ {
+			state, _ := node.getState(i)
+			ch2 := state.GetMsgExitSendChannel()
+			ch2 <- 0
+			delete(node.States, i)
+			if node.CommittedMsgs[i] != nil {
+				delete(node.CommittedMsgs, i)
+			}
+			if node.Committed[i] != 0 {
+				node.Committed[i] = 0
+			}
+			if node.Prepared[i] != 0 {
+				node.Prepared[i] = 0
+			}
+			atomic.AddInt64(&node.TotalConsensus, -1)
+		}
+		fmt.Println("donedone111111111111")
+	}
+		//
+
+
+	fmt.Println("donedone444444444444444444")
+	//////////////////////////////////////////////////////////////////////////
+
+
+
+	fmt.Println("node.TotalConsensus ", node.TotalConsensus)
+
+	for seqID, _ := range node.States {
+		fmt.Println("seq ID : ", seqID)
+		fmt.Println("node.Committed[seqID]", node.Committed[seqID])
+		fmt.Println("node.CommittedMsgs[i]", node.CommittedMsgs[seqID])
+	}
 
 	// Register new-view message into this node
 	node.VCStatesMutex.Lock()
 	node.VCStates[newviewMsg.NextViewID].NewViewMsg = newviewMsg
 	node.VCStatesMutex.Unlock()
 
-	fmt.Printf("<<<<<<<<<<<<<<<<NewView>>>>>>>>>>>>>>>>: %d by %s\n", newviewMsg.NextViewID, newviewMsg.NodeID)
+	
 
 	// Change View and Primary
 	node.updateView(newviewMsg.NextViewID)
@@ -205,7 +271,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		}
 	}
 	fmt.Println("committedMax : ", committedMax)
-	for committedMax < newviewMsg.Min_S {
+	for committedMax <= newviewMsg.Min_S {
 		var prepare consensus.PrepareMsg
 		newSequenceID := committedMax
 		prepare.SequenceID = newSequenceID
@@ -220,7 +286,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 	}
 	// if highest sequence number of received request and state is lower than min-s,
 	// node.TotalConsensus be added util min-s - 1
-	for node.TotalConsensus < newviewMsg.Min_S {
+	for node.TotalConsensus <= newviewMsg.Min_S {
 		atomic.AddInt64(&node.TotalConsensus, 1)
 	}
 
@@ -246,15 +312,15 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 			fmt.Println("no request in node.CommittedMsgs : ", prepareMsg.SequenceID)
 				//node.CommittedMsgs = append(node.CommittedMsgs, state.GetReqMsg())
 		}
-			// Initalize all of logs of this state
+		// Initalize all of logs of this state
 		state.ClearMsgLogs()
 
-			// Change the viewid, preprepare message and preprepare message's digest of the state
+		// Change the viewid, preprepare message and preprepare message's digest of the state
 		node.States[prepareMsg.SequenceID] = state.Redo_SetState(newviewMsg.NextViewID, node.MyInfo.NodeID, len(node.NodeTable), prepareMsg, prepareMsg.Digest)
 
 	} else { //if this node does not have state and a request with sequence number n (prePrepareMsg.SequenceID)
 			// Fill the state of the sequence number of prePrepareMsg
-		state := node.createState(0)
+		state := node.createState(prepareMsg.SequenceID)
 
 		state.SetSequenceID(prepareMsg.SequenceID)
 		// Log REQUEST message.

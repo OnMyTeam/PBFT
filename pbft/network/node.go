@@ -195,27 +195,28 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 				node.GetCollate(state, msg)
 			}
 		case <-ch2:
-			//return
+			return
 		case <-ctx.Done(): 
 			//node.GetPrepare(state, nil)
 		
 			var lastCommittedMsg *consensus.PrepareMsg = nil
 			msgTotalCnt := int64(len(node.CommittedMsgs))
-			fmt.Println("--------msgTotalCnt", msgTotalCnt)
 			if msgTotalCnt > 0 {
 				lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
 			}
-			fmt.Println("--------lastCommittedMsg", lastCommittedMsg.SequenceID)
-			fmt.Println("--------	state.GetSequenceID()", 	state.GetSequenceID())
 		
 			if msgTotalCnt == 0 ||
 				lastCommittedMsg.SequenceID < state.GetSequenceID() {
+				
+				fmt.Println("Start ViewChange...")	
+				
 				//startviewchange
 				node.IsViewChanging = true
+
 				// Broadcast view change message.
 				node.MsgError <- []error{ctx.Err()}
 				fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
-				fmt.Println("Start ViewChange...")
+				
 				node.StartViewChange()
 			}
 			return
@@ -223,7 +224,7 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 		}
 	}
 }
-
+ 
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
 	requestMsg := ReqPrePareMsgs.RequestMsg
