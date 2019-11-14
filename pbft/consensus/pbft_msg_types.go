@@ -18,7 +18,6 @@ type ReplyMsg struct {
 	Result    string `json:"result"`
 }
 
-//type PrePrepareMsg struct {
 type PrepareMsg struct {
 	ViewID     int64       `json:"viewID"`
 	SequenceID int64       `json:"sequenceID"`
@@ -30,6 +29,7 @@ type PrepareMsg struct {
 type VoteMsg struct {
 	ViewID     int64  		`json:"viewID"`
 	SequenceID int64  		`json:"sequenceID"`
+	PrepareMsg *PrepareMsg	`json:"prepareMsg"`
 	Digest     string 		`json:"digest"`
 	NodeID     string 		`json:"nodeID"`
 	MsgType           		`json:"msgType"`

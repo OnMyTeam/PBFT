@@ -118,8 +118,6 @@ func (state *State) ClearMsgLogs() {
 	*/
 	state.MsgLogs.TotalVoteMsg = 0
 	state.MsgLogs.TotalCollateMsg = 0
-	state.MsgLogs.commitMsgSent = 0
-	state.MsgLogs.replyMsgSent = 0
 }
 
 func (state *State) Redo_SetState(viewID int64, nodeID string, totNodes int, prepareMsg *PrepareMsg, digest string) *State {
@@ -128,8 +126,6 @@ func (state *State) Redo_SetState(viewID int64, nodeID string, totNodes int, pre
 	state.MsgLogs.PrepareMsg = prepareMsg
 	state.MsgLogs.TotalVoteMsg = 0
 	state.MsgLogs.TotalCollateMsg = 0
-	state.MsgLogs.commitMsgSent = 0
-	state.MsgLogs.replyMsgSent = 0
 
 	state.F = (totNodes - 1) / 3
 	//state.succChkPointDelete = 0
