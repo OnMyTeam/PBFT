@@ -236,7 +236,6 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	if voteMsg.SequenceID == 0 {
 		return
 	}
-	fmt.Printf("[GetPrepare] seq %d\n", voteMsg.SequenceID)
 	// Attach node ID to the message
 	voteMsg.NodeID = node.MyInfo.NodeID
 
@@ -298,14 +297,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 			node.TimerStop(state, "Vote")
 
 			if node.Committed[collateMsg.SequenceID] == 0 {
-				/*
-				for NodeID, VoteMsg := range state.GetVoteMsgs() {
-					if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] {
-						continue
-					}
-					state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
-				}
-				*/
+				state.FillHoleVoteMsgs(collateMsg)
 
 				atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
 				if node.Prepared[collateMsg.SequenceID] == 1 {
@@ -445,7 +437,6 @@ func (node *Node) executeMsg() {
 			} else {
 				lastSequenceID = 0
 			}
-			fmt.Println("[executeMsg] LastSequenceID : ", lastSequenceID)
 			// Stop execution if the message for the
 			// current sequence is not ready to execute.
 			p := pairs[lastSequenceID + 1]

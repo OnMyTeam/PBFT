@@ -45,4 +45,6 @@ type PBFT interface {
 	//setrequ
 	ClearMsgLogs()
 	Redo_SetState(viewID int64, nodeID string, totNodes int, prepareMsg *PrepareMsg, digest string) *State
+
+	FillHoleVoteMsgs(collateMsg *CollateMsg)
 }

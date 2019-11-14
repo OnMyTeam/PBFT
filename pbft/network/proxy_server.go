@@ -15,7 +15,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 1000
+const sendPeriod time.Duration = 500
 type Server struct {
 	url  string
 	node *Node

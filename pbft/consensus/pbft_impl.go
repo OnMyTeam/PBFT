@@ -415,6 +415,15 @@ func (state *State) GetCollateMsgs() map[string]*CollateMsg {
 
 	return newMap
 }
+func (state *State) FillHoleVoteMsgs(collateMsg *CollateMsg) {
+
+	for NodeID, VoteMsg := range state.GetVoteMsgs() {
+			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] {
+				continue
+			}
+			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
+	}
+}
 /*
 func (state *State) GetCommitMsgs() map[string]*VoteMsg {
 	newMap := make(map[string]*VoteMsg)
