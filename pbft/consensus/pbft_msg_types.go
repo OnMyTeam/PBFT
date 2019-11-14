@@ -1,5 +1,7 @@
 package consensus
 
+import "math/big"
+
 // Messages are TOCS style.
 
 type RequestMsg struct {
@@ -52,9 +54,9 @@ type ReqPrePareMsgs struct {
 }
 type SignatureMsg struct {
 	// signature
-	//Signature []byte `json:"signature"`
-	//R *big.Int `json:"r"`
-	//S *big.Int `json:"s"`
+	Signature []byte `json:"signature"`
+	R *big.Int `json:"r"`
+	S *big.Int `json:"s"`
 	MsgType		string 	`json:"msgType"`
 
 	// any consensus messages

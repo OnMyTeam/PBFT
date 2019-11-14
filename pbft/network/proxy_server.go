@@ -15,7 +15,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 1000
+
 type Server struct {
 	url  string
 	node *Node
@@ -42,13 +42,6 @@ func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64, decodePrivKey
 	}
 
 	server.setRoute("/prepare")
-	server.setRoute("/vote")
-	//server.setRoute("/collate")
-	//server.setRoute("/reply")
-	// View change.
-	//server.setRoute("/checkpoint")
-	//server.setRoute("/viewchange")
-	//server.setRoute("/newview")
 
 	return server
 }
@@ -78,32 +71,10 @@ func (server *Server) DialOtherNodes() {
 	// Sleep until all nodes perform ListenAndServ().
 	time.Sleep(time.Second * 3)
 
-
 	var cPrepare = make(map[string]*websocket.Conn)
-	/*
-	var cVote = make(map[string]*websocket.Conn)
-	var cCollate = make(map[string]*websocket.Conn)
-	var cReply = make(map[string]*websocket.Conn)
-	*/
-
-
-	// View change.
-	//var cCheckPoint = make(map[string]*websocket.Conn)
-	//var cViewChange = make(map[string]*websocket.Conn)
-	//var cNewView = make(map[string]*websocket.Conn)
 
 	for _, nodeInfo := range server.node.NodeTable {
-
-
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
-		//cVote[nodeInfo.NodeID] = server.setReceiveLoop("/vote", nodeInfo)
-		//cCollate[nodeInfo.NodeID] = server.setReceiveLoop("/collate", nodeInfo)
-		//cReply[nodeInfo.NodeID] = server.setReceiveLoop("/reply", nodeInfo)
-
-
-		//cCheckPoint[nodeInfo.NodeID] = server.setReceiveLoop("/checkpoint", nodeInfo)
-		//cViewChange[nodeInfo.NodeID] = server.setReceiveLoop("/viewchange", nodeInfo)
-		//cNewView[nodeInfo.NodeID] = server.setReceiveLoop("/newview", nodeInfo)
 	}
 	
 	go server.sendDummyMsg()
@@ -127,36 +98,34 @@ func (server *Server) setReceiveLoop(path string, nodeInfo *NodeInfo) *websocket
 
 	return c
 }
-
 func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *NodeInfo) {
 	c:=cc
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
-			log.Println("[receiveLoop-error]read:", err)
-			//log.Println("RL local addr : ",c.LocalAddr(),"RL remote addr : ",c.RemoteAddr())
 			u := url.URL{Scheme: "ws", Host: nodeInfo.Url, Path: path}
 			c, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 			if err != nil {
 				log.Fatal("dial:", err)
 				return 
 			}
-			log.Printf("connecting to %s from %s for %s", nodeInfo.NodeID, server.node.MyInfo.NodeID,path)
 			_, message, err = c.ReadMessage()
 			log.Printf("currunpted message size: %d\n", len(message))
 			continue
 		}
-		var marshalledMsg consensus.SignatureMsg
-		//marshalledMsg, err= deattachSignatureMsg(message, nodeInfo.PubKey)
-		err = json.Unmarshal(message, &marshalledMsg)
+		var rawMsg consensus.SignatureMsg
+		rawMsg, err, ok := deattachSignatureMsg(message, nodeInfo.PubKey)
 		if err != nil {
 			fmt.Println("[receiveLoop-error]", err)
 		}
-		switch marshalledMsg.MsgType {
+		if ok == false {
+			fmt.Println("[receiveLoop-error] decoding error")
+		}
+		switch rawMsg.MsgType {
 		case "/prepare":
 			// ReqPrePareMsgs have RequestMsg and PrepareMsg
 			var msg consensus.ReqPrePareMsgs
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			_ = json.Unmarshal(rawMsg.MarshalledMsg, &msg)
 			if msg.PrepareMsg.SequenceID == 0 {
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
@@ -164,7 +133,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			server.node.MsgEntrance <- &msg
 		case "/vote":
 			var msg consensus.VoteMsg
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			_ = json.Unmarshal(rawMsg.MarshalledMsg, &msg)
 			if msg.SequenceID == 0 {
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
@@ -172,15 +141,11 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			server.node.MsgEntrance <- &msg
 		case "/collate":
 			var msg consensus.CollateMsg
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			_ = json.Unmarshal(rawMsg.MarshalledMsg, &msg)
 			if msg.SequenceID == 0 {
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
-			server.node.MsgEntrance <- &msg
-		case "/reply":
-			var msg consensus.ReplyMsg
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
 			server.node.MsgEntrance <- &msg
 		/*
 		case "/checkpoint":
@@ -189,16 +154,18 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 		 */
 		case "/viewchange":
 			var msg consensus.ViewChangeMsg
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			_ = json.Unmarshal(rawMsg.MarshalledMsg, &msg)
 			server.node.ViewMsgEntrance <- &msg
 		case "/newview":
 			var msg consensus.NewViewMsg
-			_ = json.Unmarshal(marshalledMsg.MarshalledMsg, &msg)
+			_ = json.Unmarshal(rawMsg.MarshalledMsg, &msg)
 			server.node.ViewMsgEntrance <- &msg
 		}
 	}
 }
 func (server *Server) sendDummyMsg() {
+	const sendPeriod time.Duration = 1000
+
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
 
@@ -221,6 +188,9 @@ func (server *Server) sendDummyMsg() {
 			currentView++
 			sequenceID += 1
 
+			if sequenceID == 10 {
+				time.Sleep(time.Second * 10)
+			}
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}
@@ -236,7 +206,6 @@ func (server *Server) sendDummyMsg() {
 			if err != nil {
 				log.Println(err)
 			}
-
 		}
 
 	}
@@ -258,40 +227,31 @@ func broadcast(errCh chan<- error, url string, msg []byte, path string, privKey 
 
 	errCh <- nil
 }
-
 func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey, path string) []byte {
 	var sigMgs consensus.SignatureMsg
-	/*
 	r,s,signature, err:=consensus.Sign(privKey, msg)
-
 	if err == nil {
 		sigMgs = consensus.SignatureMsg {
 			Signature: signature,
 			R: r,
 			S: s,
 			MarshalledMsg: msg,
+			MsgType: path,
 		}
-	}
-	*/
-	sigMgs = consensus.SignatureMsg {
-		MsgType: path,
-		MarshalledMsg: msg,
 	}
 	sigMgsBytes, _ := json.Marshal(&sigMgs)
 	return sigMgsBytes
 }
-//func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey) ([]byte, error, bool){
-func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(*consensus.SignatureMsg, error){
+func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.SignatureMsg,
+		error, bool){
 	var sigMgs consensus.SignatureMsg
 	err := json.Unmarshal(msg, &sigMgs)
-	//ok := true
+	ok := false
 	if err != nil {
-		//return nil, err, false
-		return nil, err
+		return sigMgs, err, false
 	}
-	//ok := consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
-	//return sigMgs.MarshalledMsg, nil, ok
-	return &sigMgs, nil
+	ok = consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
+	return sigMgs, nil, ok
 }
 func dummyMsg(operation string, clientID string, data []byte, 
 		viewID int64, sID int64, nodeID string) []byte {

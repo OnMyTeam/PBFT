@@ -24,3 +24,7 @@ keys/
 
 # Default executable file built on Linux
 main
+
+main.go
+
+*.sh

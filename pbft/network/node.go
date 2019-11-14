@@ -141,8 +141,6 @@ func (node *Node) Broadcast(msg interface{}, path string) {
 		node.MsgError <- []error{err}
 		return
 	}
-
-	//node.MsgOutbound <- &MsgOut{Path: node.MyInfo.Url + path, Msg: jsonMsg}
 	node.MsgOutbound <- &MsgOut{IP: node.MyInfo.Url, Msg: jsonMsg, Path: path}
 }
 func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT) {
@@ -237,10 +235,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				node.GetCollate(state, msg)
 			}
 		case phase := <-state.GetTimerStartReceiveChannel():
-			fmt.Println("[TimerStart] phase: %s", phase)
+			fmt.Println("[TimerStart] phase: ", phase)
 			SetTimer(phase)
 		case phase := <-state.GetTimerStopReceiveChannel():
-			fmt.Println("[TimerStop] phase: %s", phase)
+			fmt.Println("[TimerStop] phase: ", phase)
 			if GetPhaseTimer(phase) != nil {
 				GetPhaseTimer(phase).Stop()
 			}
@@ -449,7 +447,6 @@ func (node *Node) resolveMsg() {
 		}
 	}
 }
-
 func (node *Node) executeMsg() {
 	pairs := make(map[int64]*consensus.PrepareMsg)
 	for {
