@@ -1,5 +1,7 @@
 package consensus
 
+import "math/big"
+
 // Messages are TOCS style.
 
 type RequestMsg struct {
@@ -18,7 +20,6 @@ type ReplyMsg struct {
 	Result    string `json:"result"`
 }
 
-//type PrePrepareMsg struct {
 type PrepareMsg struct {
 	ViewID     int64       `json:"viewID"`
 	SequenceID int64       `json:"sequenceID"`
@@ -30,6 +31,7 @@ type PrepareMsg struct {
 type VoteMsg struct {
 	ViewID     int64  		`json:"viewID"`
 	SequenceID int64  		`json:"sequenceID"`
+	PrepareMsg *PrepareMsg	`json:"prepareMsg"`
 	Digest     string 		`json:"digest"`
 	NodeID     string 		`json:"nodeID"`
 	MsgType           		`json:"msgType"`
@@ -52,9 +54,9 @@ type ReqPrePareMsgs struct {
 }
 type SignatureMsg struct {
 	// signature
-	//Signature []byte `json:"signature"`
-	//R *big.Int `json:"r"`
-	//S *big.Int `json:"s"`
+	Signature []byte `json:"signature"`
+	R *big.Int `json:"r"`
+	S *big.Int `json:"s"`
 	MsgType		string 	`json:"msgType"`
 
 	// any consensus messages
