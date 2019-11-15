@@ -75,7 +75,7 @@ func (server *Server) DialOtherNodes() {
 	for _, nodeInfo := range server.node.NodeTable {
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
 	}
-	
+	time.Sleep(time.Second * 10)
 	go server.sendDummyMsg()
 	
 	// Wait.

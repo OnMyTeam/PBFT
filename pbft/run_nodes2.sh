@@ -49,7 +49,7 @@ echo "Try to spawn $TOTALNODE nodes"
 
 #echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 echo $2
-for i in `seq 3 $2`
+for i in `seq $2 $3`
 do
  	nodename="Node$i"
 
