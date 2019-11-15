@@ -16,6 +16,8 @@ type State struct {
 
 	MsgState 	chan interface{}
 	MsgExit		chan int64
+	TimerStartCh	chan string
+	TimerStopCh		chan string
 
 	// f: the number of Byzantine faulty nodes
 	// f = (n-1) / 3
@@ -24,9 +26,6 @@ type State struct {
 	F int
 	B int
 	BNode map[string]int
-
-	TimerStartCh	chan string
-	TimerStopCh		chan string
 
 	ReceivedPrepareTime time.Time
 }
@@ -73,15 +72,14 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		SequenceID: seqID,
 
 		MsgState: make(chan interface{}, totNodes), // stack enough
-		MsgExit: make(chan int64),
-		TimerStartCh: make(chan string),
-		TimerStopCh: make(chan string),
+		MsgExit: make(chan int64, totNodes),
+		TimerStartCh: make(chan string, totNodes),
+		TimerStopCh: make(chan string, totNodes),
 
 		F: (totNodes-1) / 3,
 		B: 0,
 		//succChkPointDelete: 0,
 	}
-
 	return state
 }
 
@@ -129,7 +127,6 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 	}
 	return voteMsg, nil
 }
-
 func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	var collateMsg CollateMsg
 	// case1: Making UNCOMMITTED Msg
@@ -185,7 +182,6 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 
 	return collateMsg, nil
 }
-
 func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	var newcollateMsg CollateMsg
 

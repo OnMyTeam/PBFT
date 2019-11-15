@@ -46,3 +46,17 @@ func Verify(pubKey *ecdsa.PublicKey, r, s *big.Int, data []byte) bool {
 	signHash := sha256.Sum256(data)
 	return ecdsa.Verify(pubKey, signHash[:], r, s)
 }
+
+func NumOfPhase(s string) int64 {
+	switch s{
+	case "Prepare":
+		return 0
+	case "Vote":
+		return 1
+	case "Collate":
+		return 2
+	case "ViewChange":
+		return 3
+	}
+	return -1
+}

@@ -106,7 +106,6 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)),
 		MsgError: make(chan []error, len(nodeTable)),
 		ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),
-
 	}
 
 	atomic.StoreInt64(&node.TotalConsensus, 0)
@@ -158,135 +157,80 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// The node can receive messages for any consensus stage,
 	// regardless of the current stage for the state.
 
-	const prepareSigma = 300
-	const voteSigma = 300
-	const collateSigma = 300
-	const vcSigma = 1000
+	var sigma	[4]time.Duration
+	sigma[consensus.NumOfPhase("Prepare")] = 500
+	sigma[consensus.NumOfPhase("Vote")] = 500
+	sigma[consensus.NumOfPhase("Collate")] = 500
+	sigma[consensus.NumOfPhase("ViewChange")] = 100
 
-	var prepareTimer		*time.Timer
-	var voteTimer			*time.Timer
-	var collateTimer 		*time.Timer
-	var viewchangeTimer		*time.Timer
+	var timerArr			[4]*time.Timer
+	var cancelCh			[4]chan struct {}
 
-	var prepareCanceled		chan struct {}
-	var voteCanceled		chan struct {}
-	var collateCanceled		chan struct {}
-	var viewchangeCanceled	chan struct {}
-
-
-	GetPhaseTimer := func (phase string) (*time.Timer){
-		switch phase {
-		case "Prepare":
-			return prepareTimer
-		case "Vote":
-			return voteTimer
-		case "Collate":
-			return collateTimer
-		case "ViewChange":
-			return viewchangeTimer
-		}
-		return nil
-	}
-	GetCancelTimerCh := func(phase string) (chan struct {}){
-		switch phase {
-		case "Prepare":
-			return prepareCanceled
-		case "Vote":
-			return voteCanceled
-		case "Collate":
-			return collateCanceled
-		case "ViewChange":
-			return viewchangeCanceled
-		}
-		return nil
-	}
-	SetTimer := func (phase string) {
-		switch phase {
-		case "Prepare":
-			prepareTimer = time.NewTimer(time.Millisecond * prepareSigma)
-			prepareCanceled = make(chan struct {})
-		case "Vote":
-			voteTimer = time.NewTimer(time.Millisecond * voteSigma)
-			voteCanceled = make(chan struct {})
-		case "Collate":
-			collateTimer = time.NewTimer(time.Millisecond * collateSigma)
-			collateCanceled = make(chan struct {})
-		case "ViewChange":
-			viewchangeTimer = time.NewTimer(time.Millisecond * vcSigma)
-			viewchangeCanceled = make(chan struct {})
-		}
-		go func() {
+	MsgCh := state.GetMsgReceiveChannel()
+	TimerStartCh := state.GetTimerStartReceiveChannel()
+	TimerStopCh := state.GetTimerStopReceiveChannel()
+	ExitCh := state.GetMsgExitReceiveChannel()
+	go func() {
+		for {
 			select {
-			case <-GetPhaseTimer(phase).C: //when timer is done
-			case <-GetCancelTimerCh(phase): //when timer stop
-			}
-		}()
-	}
+			case msgState := <-MsgCh:
+				switch msg := msgState.(type) {
+				case *consensus.ReqPrePareMsgs:
+					node.GetPrepare(state, msg)
+				case *consensus.VoteMsg:
+					node.GetVote(state, msg)
+				case *consensus.CollateMsg:
+					node.GetCollate(state, msg)
+				}
+			case phaseName := <-TimerStartCh:
+				phase:=consensus.NumOfPhase(phaseName)
+				timerArr[phase] = time.NewTimer(time.Millisecond*sigma[phase])
+				cancelCh[phase] = make(chan struct {})
+				fmt.Printf("[Seq %d Thread] Start %s Timer\n", seqID, phaseName)
+				go func(phase int64, phaseName string) {
+					select {
+					case <-timerArr[phase].C: //when timer is done
+						fmt.Printf("[Seq %d Thread] Timer %s Timed Out\n", seqID, phaseName)
+					case <-cancelCh[phase]: //when timer stop
+						fmt.Printf("[Seq %d Thread] Timer %s Stopped\n", seqID, phaseName)
+					}
+				}(phase, phaseName)
+			case phaseName := <-TimerStopCh:
+				phase := consensus.NumOfPhase(phaseName)
+				if timerArr[phase] != nil{
+					timerArr[phase].Stop()
+				}
+				cancelCh[phase] <- struct {}{}
+			case <-ExitCh:
+				fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
+				node.StatesMutex.Lock()
+				node.States[seqID] = nil
+				node.StatesMutex.Unlock()
+				return
+				//case <-ctx.Done():
+				// //node.GetPrepare(state, nil)
+				// fmt.Println("Start ViewChange...")
+				// var lastCommittedMsg *consensus.PrepareMsg = nil
+				// msgTotalCnt := len(node.CommittedMsgs)
+				// if msgTotalCnt > 0 {
+				// 	lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
+				// }
 
-	for {
-		select {
-		case msgState := <-state.GetMsgReceiveChannel():
-			switch msg := msgState.(type) {
-			case *consensus.ReqPrePareMsgs:
-				node.GetPrepare(state, msg)
-			case *consensus.VoteMsg:
-				node.GetVote(state, msg)
-			case *consensus.CollateMsg:
-				node.GetCollate(state, msg)
+				// if msgTotalCnt == 0 ||
+				// 	 lastCommittedMsg.SequenceID < state.GetSequenceID() {
+				// 	//startviewchange
+				// 	node.IsViewChanging = true
+				// 	// Broadcast view change message.
+				// 	node.MsgError <- []error{ctx.Err()}
+				// 	if state.GetSequenceID() == int64(1) {
+				// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
+				// 		node.StartViewChange()
+				// 	}
+				// }
+				//return
 			}
-		case phase := <-state.GetTimerStartReceiveChannel():
-			fmt.Println("[TimerStart] ", phase)
-			SetTimer(phase)
-		case phase := <-state.GetTimerStopReceiveChannel():
-			fmt.Println("[TimerStop] phase: ", phase)
-			if GetPhaseTimer(phase) != nil {
-				GetPhaseTimer(phase).Stop()
-			}
-			if GetCancelTimerCh(phase) != nil {
-				GetCancelTimerCh(phase) <- struct{}{}
-			}
-		case <-state.GetMsgExitReceiveChannel():
-			fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
-			node.StatesMutex.Lock()
-			node.States[seqID] = nil
-			node.StatesMutex.Unlock()
-			return
-		//case <-ctx.Done():
-			// //node.GetPrepare(state, nil)
-			// fmt.Println("Start ViewChange...")
-			// var lastCommittedMsg *consensus.PrepareMsg = nil
-			// msgTotalCnt := len(node.CommittedMsgs)
-			// if msgTotalCnt > 0 {
-			// 	lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
-			// }
-
-			// if msgTotalCnt == 0 ||
-			// 	 lastCommittedMsg.SequenceID < state.GetSequenceID() {
-			// 	//startviewchange
-			// 	node.IsViewChanging = true
-			// 	// Broadcast view change message.
-			// 	node.MsgError <- []error{ctx.Err()}
-			// 	if state.GetSequenceID() == int64(1) {
-			// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
-			// 		node.StartViewChange()
-			// 	}
-			// }
-			//return
 		}
-	}
-}
-func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
-	node.StatesMutex.Lock()
-	state := node.States[seqID]
-	if state == nil {
-		node.States[seqID] = node.createState(seqID)
-		state = node.States[seqID]
-		go node.startTransitionWithDeadline(seqID, state)
-		state.GetTimerStartSendChannel() <- "ViewChange"
-		state.GetTimerStartSendChannel() <- "Prepare"
-	}
-	node.StatesMutex.Unlock()
-	return node.States[seqID]
+	}()
 }
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
@@ -294,7 +238,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	// When receive Prepare, save current time
-	state.SetReceivePrepareTime(time.Now()) 
+	//state.SetReceivePrepareTime(time.Now())
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -305,15 +249,14 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 		return
 	}
 
-
 	// Stop prepare phase and start vote phase if it is not committed
-	if node.Committed[prepareMsg.SequenceID] == 0 {
-		//state.GetTimerStopSendChannel() <- "Prepare"
-		//state.GetTimerStartSendChannel() <- "Vote"
-	} else {
-	// Stop prepare phase and execute the sequence if it is committed
-		//state.GetTimerStopSendChannel() <- "Prepare"
+	if node.Committed[prepareMsg.SequenceID] == 1 {
+		// Stop prepare phase and execute the sequence if it is committed
+		state.GetTimerStopSendChannel() <- "Prepare"
 		node.MsgExecution <- prepareMsg
+	} else {
+		state.GetTimerStopSendChannel() <- "Prepare"
+		state.GetTimerStartSendChannel() <- "Vote"
 	}
 
 	// Log last sequence id for checkpointing
@@ -344,11 +287,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	switch collateMsg.MsgType {
 	// Stop vote phase and start collate phase if it is not committed
 	case consensus.UNCOMMITTED:
-		//state.GetTimerStopSendChannel() <- "Vote"
-		//state.GetTimerStartSendChannel() <- "Collate"
+		state.GetTimerStopSendChannel() <- "Vote"
+		state.GetTimerStartSendChannel() <- "Collate"
 	// Stop vote phase and execute the sequence if it is committed
 	case consensus.COMMITTED:
-		//state.GetTimerStopSendChannel() <- "Vote"
+		state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
 			node.MsgExecution <- state.GetPrepareMsg()
 		}
@@ -374,8 +317,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	}
 
 	// Try to stop current phase timer
-	//state.GetTimerStopSendChannel() <- "Vote"
-	//state.GetTimerStopSendChannel() <- "Collate"
+	state.GetTimerStopSendChannel() <- "Collate"
 
 	// Log last sequence id for checkpointing
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
@@ -404,6 +346,21 @@ func (node *Node) dispatchMsg() {
 		}
 	}
 }
+func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
+	node.StatesMutex.Lock()
+	state := node.States[seqID]
+	if state == nil {
+		node.States[seqID] = node.createState(seqID)
+		state = node.States[seqID]
+		node.StatesMutex.Unlock()
+		node.startTransitionWithDeadline(seqID, state)
+		state.GetTimerStartSendChannel() <- "ViewChange"
+		state.GetTimerStartSendChannel() <- "Prepare"
+	}else {
+		node.StatesMutex.Unlock()
+	}
+	return node.States[seqID]
+}
 func (node *Node) resolveMsg() {
 	for {
 		var state consensus.PBFT
@@ -419,7 +376,6 @@ func (node *Node) resolveMsg() {
 			if node.Prepared[msg.PrepareMsg.SequenceID] == 1{
 				continue
 			}
-			// start the thread if it does not exists
 			state = node.StartThreadIfNotExists(msg.PrepareMsg.SequenceID)
 			state.GetMsgSendChannel() <- msg
 
@@ -454,6 +410,7 @@ func (node *Node) executeMsg() {
 	pairs := make(map[int64]*consensus.PrepareMsg)
 	for {
 		prepareMsg := <- node.MsgExecution
+		node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
 		for {
 			var lastSequenceID int64
@@ -475,7 +432,7 @@ func (node *Node) executeMsg() {
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
-			LogStage("Commit SequenceID : "+ string((lastSequenceID + 1)), true)
+			fmt.Println("[STAGE-DONE] Commit SequenceID : ",lastSequenceID + 1)
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
 			ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
