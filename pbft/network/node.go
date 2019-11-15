@@ -17,6 +17,7 @@ type Node struct {
 	PrivKey         *ecdsa.PrivateKey
 	NodeTable       []*NodeInfo
 	View            *View
+	EpochID			int64
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
 	VCStates		map[int64]*consensus.VCState
 	CommittedMsgs   map[int64]*consensus.PrepareMsg // kinda block.
@@ -27,6 +28,7 @@ type Node struct {
 	//CommittedMsgs   []*consensus.PrepareMsg // kinda block.
 	TotalConsensus  int64 // atomic. number of consensus started so far.
 	IsViewChanging  bool
+	NextCandidateIdx int64
 
 	// Channels
 	MsgEntrance   chan interface{}
@@ -35,6 +37,7 @@ type Node struct {
 	MsgOutbound   chan *MsgOut
 	MsgError      chan []error
 	ViewMsgEntrance chan interface{}
+	ViewChangeChan chan ViewChangeChannel
 
 	// Mutexes for preventing from concurrent access
 	StatesMutex sync.RWMutex
@@ -69,8 +72,13 @@ type MsgOut struct {
 	Path string
 }
 
+type ViewChangeChannel struct {
+	Min_S  int64 `json:"min_s"`
+	VCSCheck    bool `json:"vcscheck"`
+}
+
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 350
+const ConsensusDeadline = time.Millisecond * 340
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -87,7 +95,9 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		PrivKey: decodePrivKey,
 		NodeTable: nodeTable,
 		View:      &View{},
+		EpochID:	-1,
 		IsViewChanging: false,
+		NextCandidateIdx: 0,
 
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),
@@ -104,7 +114,8 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable)*100),
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)*100),
 		MsgError: make(chan []error, len(nodeTable)*100),
-		ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),
+		ViewMsgEntrance: make(chan interface{}, len(nodeTable)*100),
+		ViewChangeChan: make(chan ViewChangeChannel, len(nodeTable)*100),
 
 	}
 
@@ -228,6 +239,8 @@ func (node *Node) startTransitionWithDeadline(msg *consensus.ReqPrePareMsgs) {
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
 	requestMsg := ReqPrePareMsgs.RequestMsg
+
+	node.EpochID = ReqPrePareMsgs.PrepareMsg.EpochID
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
@@ -255,7 +268,9 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 		node.Broadcast(voteMsg, "/vote")
 	}
 
-	go node.startTransitionWithDeadline(nil)
+	if !node.IsViewChanging {
+		go node.startTransitionWithDeadline(nil)
+	}
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	fmt.Printf("[GetVote] to %s from %s sequenceID: %d\n", 
@@ -461,6 +476,7 @@ func (node *Node) executeMsg() {
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
 			LogStage("Commit", true)
 			node.StableCheckPoint = lastSequenceID + 1
+			node.updateView(node.View.ID + 1)
 			// TODO: execute appropriate operation.
 
 

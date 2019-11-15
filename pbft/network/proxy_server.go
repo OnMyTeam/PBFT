@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	//"fmt"
+	"sync/atomic"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"log"
 	"time"
@@ -209,34 +210,98 @@ func (server *Server) sendDummyMsg() {
 	data[len(data)-1]=0
 	currentView := server.node.View.ID
 
-	sequenceID := 0
+	sequenceID := int64(0)
 
 	for  {
 		select {
 		case <-ticker.C:
-			//if server.node.IsViewChanging {
-			//	continue
-			//}
-			primaryNode := server.node.getPrimaryInfoByID(currentView)
+			if server.node.IsViewChanging {
+				continue
+			}
+
+			if currentView % 4 == 0 {
+				server.node.VCStates = make(map[int64]*consensus.VCState)
+				server.node.updateEpochID(server.node.EpochID)
+			}
+
+			primaryNode := server.node.getPrimaryInfoByID(server.node.View.ID)
+			
 			currentView++
 			sequenceID += 1
+			
+			fmt.Printf("server.node.MyInfo.NodeID: %s\n", server.node.MyInfo.NodeID)
+			fmt.Printf("primaryNode.NodeID: %s\n", primaryNode.NodeID)
+			
 
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}
+			log.Printf("server.node.View.ID: %d", server.node.View.ID)
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
-				server.node.MyInfo.NodeID)	
+				server.node.MyInfo.NodeID, server.node.EpochID)	
 
 			// Broadcast the dummy message.
 			errCh := make(chan error, 1)
-			log.Printf("Broadcasting dummy message from %s, sequenceId: %d", server.node.MyInfo.Url, sequenceID)
+			log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
+
 			err := <-errCh
 			if err != nil {
 				log.Println(err)
 			}
+		case viewchangechannel := <- server.node.ViewChangeChan:
+			
+			fmt.Println("viewchangechannel ok1")
+			if  viewchangechannel.VCSCheck {
+				fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
 
+				primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
+				
+				//nextCandidate := server.node.NextCandidateIdx
+				//nextCandidate++
+				//nextCandidate 
+				
+
+				currentView = viewchangechannel.Min_S
+				sequenceID = currentView+1
+
+				// if currentView % 4 == 0 {
+				// 	server.node.VCStates = make(map[int64]*consensus.VCState)
+				// 	server.node.updateEpoch(server.node.Epoch)
+				// }
+
+				
+				//server.node.updateView(currentView)
+				fmt.Println("currentView", currentView)
+				fmt.Println("sequenceID", sequenceID)
+				fmt.Println("primaryNode", primaryNode)
+				
+				go server.node.startTransitionWithDeadline(nil)
+				server.node.IsViewChanging = false
+				server.node.updateView(currentView)
+				currentView++
+
+				server.node.NextCandidateIdx = (atomic.AddInt64(&server.node.NextCandidateIdx, 1)% 3) +4
+
+				if primaryNode.NodeID != server.node.MyInfo.NodeID {
+					continue
+				}
+
+				dummy := dummyMsg("Op1", "Client1", data, 
+					server.node.View.ID,int64(sequenceID),
+					server.node.MyInfo.NodeID, server.node.EpochID)
+				
+
+				// Broadcast the dummy message.
+				errCh := make(chan error, 1)
+				log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d ", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
+				broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
+				err := <-errCh
+				if err != nil {
+					log.Println(err)
+				}
+			}
 		}
 
 	}
@@ -294,7 +359,7 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(*consensus.Signat
 	return &sigMgs, nil
 }
 func dummyMsg(operation string, clientID string, data []byte, 
-		viewID int64, sID int64, nodeID string) []byte {
+		viewID int64, sID int64, nodeID string, epochID int64) []byte {
 	var RequestMsg consensus.RequestMsg
 	RequestMsg.Timestamp = time.Now().UnixNano()
 	RequestMsg.Operation = operation
@@ -308,7 +373,7 @@ func dummyMsg(operation string, clientID string, data []byte,
 	PrepareMsg.ViewID = viewID
 	PrepareMsg.SequenceID = sID
 	PrepareMsg.Digest = digest
-	PrepareMsg.EpochID = 0
+	PrepareMsg.EpochID = epochID
 	PrepareMsg.NodeID = nodeID
 
 	var ReqPrePareMsgs consensus.ReqPrePareMsgs

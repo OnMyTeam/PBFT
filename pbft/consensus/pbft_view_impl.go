@@ -9,7 +9,7 @@ import(
 )
 
 type VCState struct {
-	NextViewID         	int64
+	NextCandidateIdx  	int64
 	ViewChangeMsgLogs   *ViewChangeMsgLogs
 	NewViewMsg			*NewViewMsg
 	NodeID		   		string
@@ -32,9 +32,9 @@ type ViewChangeMsgLogs struct {
 	msgSent   int32 // atomic bool
 }
 
-func CreateViewChangeState(nodeID string, totNodes int, nextviewID int64, stablecheckpoint int64) *VCState {
+func CreateViewChangeState(nodeID string, totNodes int, nextcandidateIdx int64, stablecheckpoint int64) *VCState {
 	return &VCState{
-		NextViewID: nextviewID,
+		NextCandidateIdx: nextcandidateIdx,
 		ViewChangeMsgLogs: &ViewChangeMsgLogs{
 			ViewChangeMsgs:make(map[string]*ViewChangeMsg),
 			TotalViewChangeMsg: 0,
@@ -55,11 +55,12 @@ func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error
 	//	return nil, errors.New("view-change message is corrupted: " + err.Error() + " (nextviewID " + fmt.Sprintf("%d", viewchangeMsg.NextViewID) + ")")
 	//}
 
+	
 	// Append VIEW-CHANGE message to its logs.
 	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Lock()
         if _, ok := vcs.ViewChangeMsgLogs.ViewChangeMsgs[viewchangeMsg.NodeID]; ok {
                 fmt.Printf("View-change message from %s is already received, next view number=%d\n",
-                           viewchangeMsg.NodeID, vcs.NextViewID)
+                           viewchangeMsg.NodeID, vcs.NextCandidateIdx)
 		vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Unlock()
                 return nil, nil
         }
@@ -75,10 +76,10 @@ func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error
 	if int(newTotalViewchangeMsg) >= 2*vcs.f + 1 &&
 	   atomic.CompareAndSwapInt32(&vcs.ViewChangeMsgLogs.msgSent, 0, 1) {
 		return &NewViewMsg{
-			NextViewID: vcs.NextViewID,
+			NextCandidateIdx: vcs.NextCandidateIdx,
 			NodeID: vcs.NodeID,
 			SetViewChangeMsgs: vcs.GetViewChangeMsgs(),
-			PrepareMsg: nil,
+			//PrepareMsg: nil,
 			Min_S: 0,
 		}, nil
 	}
@@ -98,7 +99,7 @@ func (vcs *VCState) GetViewChangeMsgs() map[string]*ViewChangeMsg {
 	return newMap
 }
 
-func (vcs *VCState) verifyVCMsg(nodeID string, nextViewID int64, stableCheckPoint int64) error {
+func (vcs *VCState) verifyVCMsg(nodeID string, nextcandidateIdx int64, stableCheckPoint int64) error {
 	// Wrong view. That is, wrong configurations of peers to start the consensus.
 	// TODO vertify sender's signature
 

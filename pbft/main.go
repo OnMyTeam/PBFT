@@ -13,17 +13,17 @@ import (
 )
 
 // Hard-coded for test.
-var viewID = int64(10000000000)
+var viewID = int64(0)
 var nodeTableForTest = []*network.NodeInfo {
 	//{NodeID: "Node1",  Url: "localhost:1111"},
 	//{NodeID: "Node2",     Url: "localhost:1112"},
 	//{NodeID: "Node3", Url: "localhost:1113"},
 	//{NodeID: "Node4",    Url: "localhost:1114"},
 
-	{NodeID: "Node1",  Url: "192.168.0.2:1111"},	//jaeyoung
-	{NodeID: "Node2",     Url: "192.168.0.2:1112"},	//jaeyoung
-	{NodeID: "Node3", Url: "192.168.0.25:1113"},	//yoomee
-	{NodeID: "Node4",    Url: "192.168.0.25:1114"},	//yoomee
+	{NodeID: "Node0",  Url: "192.168.0.2:1111"},	//jaeyoung
+	{NodeID: "Node1",     Url: "192.168.0.2:1112"},	//jaeyoung
+	{NodeID: "Node2", Url: "192.168.0.25:1113"},	//yoomee
+	{NodeID: "Node3",    Url: "192.168.0.25:1114"},	//yoomee
 }
 
 func PrivateKeyDecode(pemEncoded []byte) *ecdsa.PrivateKey {
