@@ -293,6 +293,8 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	requestMsg := ReqPrePareMsgs.RequestMsg
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
+	// When receive Prepare, save current time
+	state.SetReceivePrepareTime(time.Now()) 
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -473,10 +475,12 @@ func (node *Node) executeMsg() {
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
-			LogStage("Commit SequenceID : "+string(lastSequenceID + 1), true)
+			LogStage("Commit SequenceID : "+ string((lastSequenceID + 1)), true)
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
 			ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
+			fmt.Println("[EXECUTE TIME] PREPARE : ", time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
+			fmt.Println("[EXECUTE TIME] REQUEST : ", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))			
 			node.StatesMutex.Unlock()
 			ch <- 0
 			// TODO: execute appropriate operation.

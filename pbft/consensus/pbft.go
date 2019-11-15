@@ -1,5 +1,7 @@
 package consensus
-
+import (
+	"time"
+)
 type PBFT interface {
 	/*
 	StartConsensus(request *RequestMsg, sequenceID int64) (*PrePrepareMsg, error)
@@ -24,7 +26,7 @@ type PBFT interface {
 	GetTimerStartSendChannel() chan<- string
 	GetTimerStopReceiveChannel() <-chan string
 	GetTimerStopSendChannel() chan<- string
-
+	GetReceivePrepareTime() time.Time
 	GetReqMsg() *RequestMsg
 	GetPrepareMsg() *PrepareMsg
 	GetVoteMsgs() map[string]*VoteMsg
@@ -34,7 +36,7 @@ type PBFT interface {
 	SetSequenceID(sequenceID int64)
 	SetDigest(digest string)
 	SetViewID(viewID int64)
-
+	SetReceivePrepareTime(time.Time)
 	//setrequ
 	ClearMsgLogs()
 	Redo_SetState(viewID int64, nodeID string, totNodes int, prepareMsg *PrepareMsg, digest string) *State

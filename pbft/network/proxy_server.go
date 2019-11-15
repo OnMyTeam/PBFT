@@ -163,7 +163,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 	}
 }
 func (server *Server) sendDummyMsg() {
-	const sendPeriod time.Duration = 500
+	const sendPeriod time.Duration = 300
 
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
@@ -187,9 +187,9 @@ func (server *Server) sendDummyMsg() {
 			currentView++
 			sequenceID += 1
 
-			if sequenceID == 10 {
-				time.Sleep(time.Second * 10)
-			}
+			// if sequenceID == 10 {
+			// 	time.Sleep(time.Second * 10)
+			// }
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}

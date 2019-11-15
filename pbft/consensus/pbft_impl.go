@@ -6,6 +6,7 @@ import (
 	// "log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 type State struct {
 	ViewID          int64
@@ -26,6 +27,8 @@ type State struct {
 
 	TimerStartCh	chan string
 	TimerStopCh		chan string
+
+	ReceivedPrepareTime time.Time
 }
 
 type MsgLogs struct {
@@ -277,6 +280,9 @@ func (state *State) GetTimerStopReceiveChannel() <-chan string {
 func (state *State) GetTimerStopSendChannel() chan<- string {
 	return state.TimerStopCh
 }
+func (state *State) GetReceivePrepareTime() time.Time {
+	return state.ReceivedPrepareTime
+}
 func (state *State) GetReqMsg() *RequestMsg {
 	//return state.MsgLogs.ReqMsg
 	return state.MsgLogs.ReqMsg
@@ -395,4 +401,8 @@ func (state *State) SetDigest(digest string) {
 
 func (state *State) SetViewID(viewID int64) {
 	state.ViewID = viewID
+}
+
+func (state *State) SetReceivePrepareTime(time time.Time) {
+	state.ReceivedPrepareTime = time
 }
