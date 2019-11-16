@@ -95,7 +95,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		PrivKey: decodePrivKey,
 		NodeTable: nodeTable,
 		View:      &View{},
-		EpochID:	-1,
+		EpochID:	0,
 		IsViewChanging: false,
 		NextCandidateIdx: 0,
 
@@ -477,29 +477,14 @@ func (node *Node) executeMsg() {
 			LogStage("Commit", true)
 			node.StableCheckPoint = lastSequenceID + 1
 			node.updateView(node.View.ID + 1)
-			// TODO: execute appropriate operation.
-
-
-			/*
-			nCheckPoint := node.CheckPointSendPoint + periodCheckPoint
-			msgTotalCnt1 := len(node.CommittedMsgs)
-
-			if node.CommittedMsgs[msgTotalCnt1 - 1].SequenceID ==  nCheckPoint{
-				node.CheckPointSendPoint = nCheckPoint
-
-				SequenceID := node.CommittedMsgs[len(node.CommittedMsgs) - 1].SequenceID
-				checkPointMsg, _ := node.getCheckPointMsg(SequenceID, node.MyInfo.NodeID, node.CommittedMsgs[msgTotalCnt1 - 1])
-				LogStage("CHECKPOINT", false)
-				node.Broadcast(checkPointMsg, "/checkpoint")
-				node.CheckPoint(checkPointMsg)
-			}*/
-
-			// delete(pairs, lastSequenceID + 1)
-			
+			if node.View.ID % 4 == 0 {
+				node.VCStates = make(map[int64]*consensus.VCState)
+				node.updateEpochID(node.EpochID)
+			}
 		}
 
 		// Print all committed messages.
-		/*
+		/*            
 		for _, v := range committedMsgs {
 			digest, _ := consensus.Digest(v.RequestMsg.Data)
 			fmt.Printf("***committedMsgs[%d]: clientID=%s, operation=%s, timestamp=%d, data(digest)=%s***\n",

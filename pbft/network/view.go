@@ -66,7 +66,7 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	vcs = node.VCStates[node.EpochID]
-	fmt.Println("node.Epoch : %d", node.EpochID)
+	fmt.Printf("node.Epoch : %d\n", node.EpochID)
 	// Create a view state if it does not exist.
 	for vcs == nil {
 		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint)
@@ -209,6 +209,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	fmt.Println("node.TotalConsensus:  ",node.TotalConsensus)
 
 	fmt.Printf("node.StableCheckPoint: %d , newviewMsg.Min_S: %d\n", node.StableCheckPoint, newviewMsg.Min_S)
+
 
 	//fmt.Println("newviewMsg.PrepareMsg: ", newviewMsg.PrepareMsg)
 	

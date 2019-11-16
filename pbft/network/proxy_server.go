@@ -219,10 +219,10 @@ func (server *Server) sendDummyMsg() {
 				continue
 			}
 
-			if currentView % 4 == 0 {
-				server.node.VCStates = make(map[int64]*consensus.VCState)
-				server.node.updateEpochID(server.node.EpochID)
-			}
+			// if currentView % 4 == 0 {
+			// 	server.node.VCStates = make(map[int64]*consensus.VCState)
+			// 	server.node.updateEpochID(server.node.EpochID)
+			// }
 
 			primaryNode := server.node.getPrimaryInfoByID(server.node.View.ID)
 			
@@ -258,6 +258,7 @@ func (server *Server) sendDummyMsg() {
 
 				primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
 				
+
 				//nextCandidate := server.node.NextCandidateIdx
 				//nextCandidate++
 				//nextCandidate 
@@ -265,6 +266,7 @@ func (server *Server) sendDummyMsg() {
 
 				currentView = viewchangechannel.Min_S
 				sequenceID = currentView+1
+
 
 				// if currentView % 4 == 0 {
 				// 	server.node.VCStates = make(map[int64]*consensus.VCState)
@@ -280,7 +282,9 @@ func (server *Server) sendDummyMsg() {
 				go server.node.startTransitionWithDeadline(nil)
 				server.node.IsViewChanging = false
 				server.node.updateView(currentView)
+				
 				currentView++
+
 
 				server.node.NextCandidateIdx = (atomic.AddInt64(&server.node.NextCandidateIdx, 1)% 3) +4
 
