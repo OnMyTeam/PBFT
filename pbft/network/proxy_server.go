@@ -173,6 +173,7 @@ func (server *Server) sendDummyMsg() {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
+	// data := consensus.randBytes(1024 * 1024)
 	currentView := server.node.View.ID
 
 	sequenceID := 0

@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"crypto/ecdsa"
 	"crypto/rand"
+	// mrand "math/rand"
 )
 
 func Hash(content []byte) string {
@@ -46,3 +47,12 @@ func Verify(pubKey *ecdsa.PublicKey, r, s *big.Int, data []byte) bool {
 	signHash := sha256.Sum256(data)
 	return ecdsa.Verify(pubKey, signHash[:], r, s)
 }
+
+// func RandBytes(n int) []byte {
+// 	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+// 	b := make([]byte, n)
+// 	for i := range b {
+// 		b[i] = letterBytes[mrand.Intn(len(letterBytes))]
+// 	}
+// 	return b
+// }

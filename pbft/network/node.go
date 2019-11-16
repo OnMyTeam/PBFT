@@ -100,8 +100,8 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		CommittedMsgs:   make(map[int64]*consensus.PrepareMsg),
 
 		// Channels
-		MsgEntrance: make(chan interface{}, len(nodeTable) * len(nodeTable)),
-		MsgDelivery: make(chan interface{}, len(nodeTable) * len(nodeTable)), // TODO: enough?
+		MsgEntrance: make(chan interface{}, len(nodeTable)),
+		MsgDelivery: make(chan interface{}, len(nodeTable)), // TODO: enough?
 		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable)),
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)),
 		MsgError: make(chan []error, len(nodeTable)),
@@ -158,10 +158,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// The node can receive messages for any consensus stage,
 	// regardless of the current stage for the state.
 
-	const prepareSigma = 300
-	const voteSigma = 300
-	const collateSigma = 300
-	const vcSigma = 1000
+	const prepareSigma = 100
+	const voteSigma = 50
+	const collateSigma = 50
+	const vcSigma = 100
 
 	var prepareTimer		*time.Timer
 	var voteTimer			*time.Timer
@@ -218,6 +218,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 		go func() {
 			select {
 			case <-GetPhaseTimer(phase).C: //when timer is done
+				fmt.Println(phase, "Timer Done!!")
 			case <-GetCancelTimerCh(phase): //when timer stop
 			}
 		}()
@@ -332,6 +333,7 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 					node.MyInfo.NodeID, voteMsg.NodeID, voteMsg.SequenceID)
 
 	collateMsg, err := state.Vote(voteMsg)
+	fmt.Println("Node VoteLength : ", len(state.GetVoteMsgs()))
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
