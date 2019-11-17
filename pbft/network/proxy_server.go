@@ -219,11 +219,6 @@ func (server *Server) sendDummyMsg() {
 				continue
 			}
 
-			// if currentView % 4 == 0 {
-			// 	server.node.VCStates = make(map[int64]*consensus.VCState)
-			// 	server.node.updateEpochID(server.node.EpochID)
-			// }
-			
 			sequenceID++
 
 			server.node.updateView(sequenceID-1)
@@ -239,7 +234,6 @@ func (server *Server) sendDummyMsg() {
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}
-			
 
 			log.Printf("server.node.View.ID: %d", server.node.View.ID)
 			dummy := dummyMsg("Op1", "Client1", data, 
@@ -252,6 +246,7 @@ func (server *Server) sendDummyMsg() {
 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
 			
 
+
 			err := <-errCh
 			if err != nil {
 				log.Println(err)
@@ -261,28 +256,10 @@ func (server *Server) sendDummyMsg() {
 			fmt.Println("viewchangechannel ok1")
 			if  viewchangechannel.VCSCheck {
 				
-				
-
-				//nextCandidate := server.node.NextCandidateIdx
-				//nextCandidate++
-				//nextCandidate 
-				
-				
 				server.node.StableCheckPoint = viewchangechannel.Min_S
 				sequenceID = server.node.StableCheckPoint+1
 				server.node.updateView(server.node.StableCheckPoint)
 				server.node.updateEpochID(server.node.StableCheckPoint)
-
-				// if currentView % 4 == 0 {
-				// 	server.node.VCStates = make(map[int64]*consensus.VCState)
-				// 	server.node.updateEpoch(server.node.Epoch)
-				// }
-
-				
-				//server.node.updateView(currentView)
-				// fmt.Println("currentView", currentView)
-				// fmt.Println("sequenceID", sequenceID)
-				// fmt.Println("primaryNode", primaryNode)
 				
 				go server.node.startTransitionWithDeadline(nil)
 				server.node.IsViewChanging = false

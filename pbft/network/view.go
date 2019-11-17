@@ -153,11 +153,9 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 		lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
 	}
 
-	//fmt.Println("donedone111111111111")
 	if node.IsViewChanging == false || newviewMsg.Min_S+1 < totalcon {
 		node.IsViewChanging = true
 
-		//fmt.Println("donedone222222222222222")
 		for i := newviewMsg.Min_S+1; i <= totalcon; i++ {
 		
 			state, _ := node.getState(i)
@@ -257,13 +255,6 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		atomic.AddInt64(&node.TotalConsensus, 1)
 	}
 
-	//Fill the PrePrepare message from new-view message
-	//prepareMsg := newviewMsg.PrepareMsg
-
-	//fmt.Println("prepareMsg.NodeID : ", prepareMsg.NodeID)
-	//fmt.Println("prepareMsg.SequenceID : ", prepareMsg.SequenceID)
-
-	// Fill the state of the sequence number of prePrepareMsg
 	fmt.Println("+++++++++++++++++++FILLHOLE DONE++++++++++++++++++++")
 
 }
@@ -279,6 +270,7 @@ func (node *Node) updateView(viewID int64) {
 	node.View.Primary = node.getPrimaryInfoByID(node.View.ID)
 }
 
+
 func (node *Node) isMyNodePrimary() bool {
 	return node.MyInfo.NodeID == node.View.Primary.NodeID
 }
@@ -287,14 +279,6 @@ func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
 	viewIdx := viewID 
 	return node.NodeTable[viewIdx]
 }
-
-// func GetPrepareForNewview(nextcandidateIdx int64, sequenceid int64) *consensus.PrepareMsg {
-// 	return &consensus.PrepareMsg{
-// 		ViewID:     nextcandidateIdx,
-// 		SequenceID: sequenceid,
-// 		Digest:     "",
-// 	}
-// }
 
 // Create a set of PreprepareMsg and PrepareMsgs for each sequence number.
 func (node *Node) CreateSetP() map[int64]*consensus.SetPm {
