@@ -26,6 +26,7 @@ type PrepareMsg struct {
 	Digest     string      `json:"digest"`
 	EpochID 	int64      `json:"epochID"`
 	NodeID      string     `json:"nodeID"`
+	Seed		int
 }
 
 type VoteMsg struct {

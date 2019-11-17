@@ -54,7 +54,7 @@ do
  	nodename="Node$i"
 
  	echo "node $nodename spawned!"
- 	(NODENAME=$nodename; ./main $NODENAME $NODELISTPATH 2>&1 > "$LOGPATH/$NODENAME.log") &
+ 	(NODENAME=$nodename; ./main $NODENAME $1 2>&1 > "$LOGPATH/$NODENAME.log") &
  done
 printf "${RED}$TOTALNODE nodes are running${NC}\n"
 echo "(wait)"

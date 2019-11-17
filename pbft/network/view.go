@@ -1,13 +1,13 @@
 package network
 
 import (
-	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"fmt"
+	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	//"time"
 	"sync/atomic"
 	"unsafe"
 )
-
+var seedList []string
 func (node *Node) StartViewChange() {
 	// Start_ViewChange
 	LogStage("ViewChange", false)
@@ -286,11 +286,16 @@ func (node *Node) updateView(viewID int64) {
 func (node *Node) isMyNodePrimary() bool {
 	return node.MyInfo.NodeID == node.View.Primary.NodeID
 }
+func(node *Node) setNewSeedList(seedNo int) int {
+	node.NodeTable = node.SeedNodeTables[seedNo]
+	fmt.Println("New seed is ",seedNo)
+	return seedNo
+}
 
-func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
-	var Epoch int64 = 4
-	viewIdx := viewID % Epoch
-	return node.NodeTable[viewIdx]
+func (node *Node) getPrimaryInfoByID(sequenceID int64) *NodeInfo {
+	sendingNum := int64(len(node.NodeTable)/2)
+	primary := node.NodeTable[((sequenceID-1)%10) % sendingNum]
+	return primary
 }
 
 func GetPrepareForNewview(nextviewID int64, sequenceid int64, digest string) *consensus.PrepareMsg {

@@ -86,7 +86,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (VoteMsg, error) {
 	var voteMsg VoteMsg
 	// case1: Making NULL Msg
-	if prepareMsg == nil {	
+	if requestMsg == nil {
 		voteMsg = VoteMsg{
 			ViewID: state.ViewID,
 			Digest: state.MsgLogs.Digest,

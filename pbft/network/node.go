@@ -16,6 +16,7 @@ type Node struct {
 	MyInfo          *NodeInfo
 	PrivKey         *ecdsa.PrivateKey
 	NodeTable       []*NodeInfo
+	SeedNodeTables	[20][]*NodeInfo
 	View            *View
 
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
@@ -82,11 +83,13 @@ const CoolingTotalErrMsg = 30
 // Number of outbound connection for a node.
 const MaxOutboundConnection = 1000
 
-func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
+func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*NodeInfo,
+			viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
 	node := &Node{
 		MyInfo:    myInfo,
 		PrivKey: decodePrivKey,
 		NodeTable: nodeTable,
+		SeedNodeTables: seedNodeTables,
 		View:      &View{},
 		IsViewChanging: false,
 
@@ -158,10 +161,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 500
-	sigma[consensus.NumOfPhase("Vote")] = 500
-	sigma[consensus.NumOfPhase("Collate")] = 500
-	sigma[consensus.NumOfPhase("ViewChange")] = 100
+	sigma[consensus.NumOfPhase("Prepare")] = 1500
+	sigma[consensus.NumOfPhase("Vote")] = 5000
+	sigma[consensus.NumOfPhase("Collate")] = 5000
+	sigma[consensus.NumOfPhase("ViewChange")] = 10000
 
 	var timerArr			[4]*time.Timer
 	var cancelCh			[4]chan struct {}
@@ -186,13 +189,23 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				phase:=consensus.NumOfPhase(phaseName)
 				timerArr[phase] = time.NewTimer(time.Millisecond*sigma[phase])
 				cancelCh[phase] = make(chan struct {})
-				fmt.Printf("[Seq %d Thread] Start %s Timer\n", seqID, phaseName)
+				// fmt.Printf("[Seq %d Thread] Start %s Timer\n", seqID, phaseName)
 				go func(phase int64, phaseName string) {
 					select {
 					case <-timerArr[phase].C: //when timer is done
-						fmt.Printf("[Seq %d Thread] Timer %s Timed Out\n", seqID, phaseName)
+					switch phaseName{
+					case "Prepare":
+						reqPrepareMsg := &consensus.ReqPrePareMsgs{
+							RequestMsg: nil,
+							PrepareMsg: &consensus.PrepareMsg{
+								NodeID: node.MyInfo.NodeID,
+								SequenceID: seqID,
+								Seed: -1,
+							},
+						}
+						node.GetPrepare(state, reqPrepareMsg)
+					}
 					case <-cancelCh[phase]: //when timer stop
-						fmt.Printf("[Seq %d Thread] Timer %s Stopped\n", seqID, phaseName)
 					}
 				}(phase, phaseName)
 			case phaseName := <-TimerStopCh:
@@ -268,6 +281,12 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 
 	// Start next sequence thread if does not exists
 	node.StartThreadIfNotExists(prepareMsg.SequenceID + 1)
+
+	if prepareMsg.Seed != -1 {
+		//log.Println("Prepare for next Epoch",prepareMsg.Seed)
+		//node.setNewSeedList(prepareMsg.Seed)
+	}
+
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
@@ -435,11 +454,16 @@ func (node *Node) executeMsg() {
 			fmt.Println("[STAGE-DONE] Commit SequenceID : ",lastSequenceID + 1)
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
+			if node.States[node.StableCheckPoint]!=nil && node.States[node.StableCheckPoint].GetReqMsg() != nil {
+				fmt.Println("[EXECUTE TIME] PREPARE : ", time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
+				fmt.Println("[EXECUTE TIME] REQUEST : ", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
+			} else {
+				fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
+				fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
+			}
 			ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
-			fmt.Println("[EXECUTE TIME] PREPARE : ", time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
-			fmt.Println("[EXECUTE TIME] REQUEST : ", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))			
-			node.StatesMutex.Unlock()
 			ch <- 0
+			node.StatesMutex.Unlock()
 			// TODO: execute appropriate operation.
 
 

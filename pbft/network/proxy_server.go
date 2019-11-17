@@ -3,12 +3,12 @@
 package network
 
 import (
+	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/url"
-	"crypto/ecdsa"
-	"encoding/json"
 	//"fmt"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"log"
@@ -20,7 +20,8 @@ type Server struct {
 	node *Node
 }
  
-func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64, decodePrivKey *ecdsa.PrivateKey) *Server {
+func NewServer(nodeID string, nodeTable []*NodeInfo, seedNodeTables [20][]*NodeInfo,
+			viewID int64, decodePrivKey *ecdsa.PrivateKey) *Server {
 	nodeIdx := int(-1)
 	for idx, nodeInfo := range nodeTable {
 		if nodeInfo.NodeID == nodeID {
@@ -34,7 +35,7 @@ func NewServer(nodeID string, nodeTable []*NodeInfo, viewID int64, decodePrivKey
 		return nil
 	}
 
-	node := NewNode(nodeTable[nodeIdx], nodeTable, viewID, decodePrivKey)
+	node := NewNode(nodeTable[nodeIdx], nodeTable, seedNodeTables, viewID, decodePrivKey)
 	server := &Server{
 		url: nodeTable[nodeIdx].Url,
 		node: node,
@@ -163,7 +164,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 	}
 }
 func (server *Server) sendDummyMsg() {
-	const sendPeriod time.Duration = 300
+	const sendPeriod time.Duration = 200
 
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
@@ -173,9 +174,11 @@ func (server *Server) sendDummyMsg() {
 		data[i] = 'A'
 	}
 	data[len(data)-1]=0
-	currentView := server.node.View.ID
 
-	sequenceID := 0
+	var sequenceID int64 = 0
+	var epoch int64 = 0
+	var seed int64 = -1
+	fmt.Println("start sendDummy")
 
 	for  {
 		select {
@@ -183,27 +186,39 @@ func (server *Server) sendDummyMsg() {
 			//if server.node.IsViewChanging {
 			//	continue
 			//}
-			primaryNode := server.node.getPrimaryInfoByID(currentView)
-			currentView++
+
 			sequenceID += 1
-			// if sequenceID == 10 {
-			// 	time.Sleep(time.Second * 10)
-			// }
+			primaryNode := server.node.getPrimaryInfoByID(sequenceID)
+			if sequenceID % 10 == 1 && sequenceID != 1{
+				epoch += 1
+				seed = epoch % 19+1
+				server.node.setNewSeedList(int(seed))
+			}
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
 			}
+			if sequenceID % 10 == 1 && sequenceID != 1 {
+				log.Println("Epoch ",epoch," seed Created: seed is ", seed)
+				//seed=int64(rand.Intn(18)+1)
+				//server.node.setNewSeedList(seed)
+			} else {
+				seed=-1
+			}
+
 			dummy := dummyMsg("Op1", "Client1", data, 
 				server.node.View.ID,int64(sequenceID),
-				server.node.MyInfo.NodeID)	
+				server.node.MyInfo.NodeID, int(seed))
 
 			// Broadcast the dummy message.
 			errCh := make(chan error, 1)
-			log.Printf("Broadcasting dummy message from %s, sequenceId: %d", server.node.MyInfo.Url, sequenceID)
+			log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
+				server.node.MyInfo.NodeID, sequenceID)
 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
 			err := <-errCh
 			if err != nil {
 				log.Println(err)
 			}
+
 		}
 
 	}
@@ -252,7 +267,7 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.Signatu
 	return sigMgs, nil, ok
 }
 func dummyMsg(operation string, clientID string, data []byte, 
-		viewID int64, sID int64, nodeID string) []byte {
+		viewID int64, sID int64, nodeID string, Seed int) []byte {
 	var RequestMsg consensus.RequestMsg
 	RequestMsg.Timestamp = time.Now().UnixNano()
 	RequestMsg.Operation = operation
@@ -268,6 +283,7 @@ func dummyMsg(operation string, clientID string, data []byte,
 	PrepareMsg.Digest = digest
 	PrepareMsg.EpochID = 0
 	PrepareMsg.NodeID = nodeID
+	PrepareMsg.Seed= Seed
 
 	var ReqPrePareMsgs consensus.ReqPrePareMsgs
 	ReqPrePareMsgs.RequestMsg = &RequestMsg
