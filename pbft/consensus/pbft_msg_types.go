@@ -85,6 +85,7 @@ type SetPm struct {
 type NewViewMsg struct {
 	NodeID     string `json:"nodeID"`
 	NextCandidateIdx int64  `json:"nextcandidateIdx"`
+	EpochID    int64 `json:"epochID"`
 	SetViewChangeMsgs map[string]*ViewChangeMsg `json:"setViewchangemsgs"` 	//V a set containing the valid ViewChageMsg 
 	//SetPrepareMsgs map[int64]*PrepareMsg `json:"setPrepreparemsgs"`
 	//PrepareMsg *PrepareMsg `json:"Preparemsg"`

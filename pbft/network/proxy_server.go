@@ -255,7 +255,8 @@ func (server *Server) sendDummyMsg() {
 			fmt.Println("viewchangechannel ok1")
 			if  viewchangechannel.VCSCheck {
 				fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
-
+				
+				
 				primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
 				
 
@@ -266,7 +267,7 @@ func (server *Server) sendDummyMsg() {
 
 				currentView = viewchangechannel.Min_S
 				sequenceID = currentView+1
-
+				server.node.updateEpochID(sequenceID)
 
 				// if currentView % 4 == 0 {
 				// 	server.node.VCStates = make(map[int64]*consensus.VCState)
@@ -283,6 +284,10 @@ func (server *Server) sendDummyMsg() {
 				server.node.IsViewChanging = false
 				server.node.updateView(currentView)
 				
+				if currentView % 4 == 0 {
+					server.node.VCStates = make(map[int64]*consensus.VCState)
+				}
+
 				currentView++
 
 
@@ -292,6 +297,7 @@ func (server *Server) sendDummyMsg() {
 					continue
 				}
 
+				//log.Printf("--------------------------------view-change--------------------------------\n")
 				dummy := dummyMsg("Op1", "Client1", data, 
 					server.node.View.ID,int64(sequenceID),
 					server.node.MyInfo.NodeID, server.node.EpochID)

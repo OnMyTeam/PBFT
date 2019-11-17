@@ -133,16 +133,7 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 
 	fmt.Println("min_s ", min_s)
 
-	for _, vcm := range newViewMsg.SetViewChangeMsgs {
-		for seq, _ := range vcm.SetP {
-			if seq < min_s{
-				continue
-			}
-			//fmt.Println("========setpm.PrepareMsg.Digest ", setpm.PrepareMsg.Digest)
-			//digest := setpm.PrepareMsg.Digest
-			//newViewMsg.PrepareMsg = GetPrepareForNewview(newViewMsg.nextCandidateIdx, min_s)
-		}
-	}
+	newViewMsg.EpochID = min_s / 4
 
 	return min_s
 }
@@ -203,6 +194,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	// Change View and Primary
 	//node.updateView(node.NextCandidateIdex)
 	node.StableCheckPoint = newviewMsg.Min_S
+
 
 	fmt.Println("node.NextCandidateIdex: ",node.NextCandidateIdx)
 
@@ -276,8 +268,9 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 
 }
 
-func (node *Node) updateEpochID(epochID int64) {
-	node.EpochID = epochID + 1
+func (node *Node) updateEpochID(sequenceID int64) {
+	epochID := sequenceID / 4
+	node.EpochID = epochID
 }
 
 func (node *Node) updateView(viewID int64) {

@@ -78,7 +78,7 @@ type ViewChangeChannel struct {
 }
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 340
+const ConsensusDeadline = time.Millisecond * 370
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -475,11 +475,12 @@ func (node *Node) executeMsg() {
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
 			LogStage("Commit", true)
+
 			node.StableCheckPoint = lastSequenceID + 1
 			node.updateView(node.View.ID + 1)
+			node.updateEpochID(node.StableCheckPoint)
 			if node.View.ID % 4 == 0 {
 				node.VCStates = make(map[int64]*consensus.VCState)
-				node.updateEpochID(node.EpochID)
 			}
 		}
 
