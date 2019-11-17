@@ -78,7 +78,7 @@ type ViewChangeChannel struct {
 }
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 370
+const ConsensusDeadline = time.Millisecond * 350
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -97,7 +97,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, viewID int64, decodePrivKe
 		View:      &View{},
 		EpochID:	0,
 		IsViewChanging: false,
-		NextCandidateIdx: 0,
+		NextCandidateIdx: 4,
 
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),

@@ -4,7 +4,7 @@ BEGIN {
    # User input
    # N: number of nodes
 
-   portnumber = 1111
+   portnumber = 1110
 }
 
 END {
