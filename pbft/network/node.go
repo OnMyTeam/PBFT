@@ -477,10 +477,11 @@ func (node *Node) executeMsg() {
 			LogStage("Commit", true)
 
 			node.StableCheckPoint = lastSequenceID + 1
-			node.updateView(node.View.ID + 1)
+			node.updateView(node.StableCheckPoint)
 			node.updateEpochID(node.StableCheckPoint)
 			if node.View.ID % 4 == 0 {
 				node.VCStates = make(map[int64]*consensus.VCState)
+				node.NextCandidateIdx = 4
 			}
 		}
 

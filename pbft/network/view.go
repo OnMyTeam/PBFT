@@ -65,19 +65,19 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// Ignore VIEW-CHANGE message if the next view id is not new.
 	
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	vcs = node.VCStates[node.EpochID]
-	fmt.Printf("node.Epoch : %d\n", node.EpochID)
+	vcs = node.VCStates[node.NextCandidateIdx]
+	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
 	// Create a view state if it does not exist.
 	for vcs == nil {
 		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint)
 		// Register state into node
 		node.VCStatesMutex.Lock()
-		node.VCStates[node.EpochID] = vcs
+		node.VCStates[node.NextCandidateIdx] = vcs
 		node.VCStatesMutex.Unlock()
 
 		// Assign new VCState if node did not create the state.
-		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(node.VCStates[node.EpochID])), unsafe.Pointer(nil), unsafe.Pointer(vcs)) {
-			vcs = node.VCStates[node.EpochID]
+		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(node.VCStates[node.NextCandidateIdx])), unsafe.Pointer(nil), unsafe.Pointer(vcs)) {
+			vcs = node.VCStates[node.NextCandidateIdx]
 		}
 	}
 
@@ -185,7 +185,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// Register new-view message into this node
 	node.VCStatesMutex.Lock()
-	node.VCStates[node.EpochID].NewViewMsg = newviewMsg
+	node.VCStates[node.NextCandidateIdx].NewViewMsg = newviewMsg
 	node.VCStatesMutex.Unlock()
 
 	// Fill missing states and messages
@@ -194,7 +194,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	// Change View and Primary
 	//node.updateView(node.NextCandidateIdex)
 	node.StableCheckPoint = newviewMsg.Min_S
-
+	
 
 	fmt.Println("node.NextCandidateIdex: ",node.NextCandidateIdx)
 
