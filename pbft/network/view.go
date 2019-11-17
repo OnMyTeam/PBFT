@@ -321,10 +321,7 @@ func (node *Node) CreateViewChangeMsg(setp map[int64]*consensus.SetPm) *consensu
 	//fmt.Println("setc",setc)
 
 	//committeeNum := int64(7)
-	voter := int64(4)
-	nextCandidate := node.NextCandidateIdx
-	nextCandidate = (nextCandidate % 3) + voter
-	node.NextCandidateIdx = nextCandidate
+	node.NextCandidateIdx = int64(4)
 
 	return &consensus.ViewChangeMsg{
 		NodeID: node.MyInfo.NodeID,
