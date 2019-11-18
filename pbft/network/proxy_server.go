@@ -76,7 +76,7 @@ func (server *Server) DialOtherNodes() {
 	for _, nodeInfo := range server.node.NodeTable {
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
 	}
-	//time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 10)
 	go server.sendDummyMsg()
 	
 	// Wait.
@@ -164,7 +164,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 	}
 }
 func (server *Server) sendDummyMsg() {
-	const sendPeriod time.Duration = 200
+	const sendPeriod time.Duration = 500
 
 	ticker := time.NewTicker(time.Millisecond * sendPeriod)
 	defer ticker.Stop()
