@@ -6,6 +6,7 @@ import(
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type VCState struct {
@@ -19,6 +20,8 @@ type VCState struct {
 	// f = (n-1) / 3
 	// e.g., n = 5, f = 1
 	f int
+
+	ReceivedViewchangeTime time.Time
 }
 
 type ViewChangeMsgLogs struct {
@@ -39,6 +42,7 @@ func CreateViewChangeState(nodeID string, totNodes int, nextcandidateIdx int64, 
 			ViewChangeMsgs:make(map[string]*ViewChangeMsg),
 			TotalViewChangeMsg: 0,
 			msgSent: 0,
+	
 		},
 		NewViewMsg: nil,
 		NodeID: nodeID,
@@ -139,3 +143,11 @@ func (state *State) Redo_SetState(viewID int64, nodeID string, totNodes int, pre
 
 	return state
 }
+
+func (vcs *VCState) SetReceiveViewchangeTime(time time.Time) {
+	vcs.ReceivedViewchangeTime = time
+}
+
+func (vcs *VCState) GetReceiveViewchangeTime() time.Time {
+	return vcs.ReceivedViewchangeTime
+ }

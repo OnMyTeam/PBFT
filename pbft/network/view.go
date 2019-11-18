@@ -3,14 +3,14 @@ package network
 import (
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"fmt"
-	//"time"
+	"time"
 	"sync/atomic"
 	"unsafe"
 )
 
 func (node *Node) StartViewChange() {
 	// Start_ViewChange
-	LogStage("ViewChange", false)
+//	LogStage("ViewChange", false)
 
 	var lastCommittedMsg *consensus.PrepareMsg = nil
 	msgTotalCnt := int64(len(node.CommittedMsgs))
@@ -20,11 +20,11 @@ func (node *Node) StartViewChange() {
 
 	var totalcon int64 = node.TotalConsensus	
 	for i := int64(lastCommittedMsg.SequenceID+1); i <= totalcon; i++ {
-		fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
+//		fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
 		
 		state, _ := node.getState(i)
 		if i != lastCommittedMsg.SequenceID+1 {
-			fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
+//			fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
 			ch2 := state.GetMsgExitSendChannel()
 			ch2 <- 0
 		}
@@ -47,7 +47,7 @@ func (node *Node) StartViewChange() {
 	// Create ViewChangeMsg.
 	viewChangeMsg := node.CreateViewChangeMsg(setp)
 
-	fmt.Printf("++++++++++++++++++++ I'm %s  \n", viewChangeMsg.NodeID)
+//	fmt.Printf("++++++++++++++++++++ I'm %s  \n", viewChangeMsg.NodeID)
 
 	// VIEW-CHANGE message created by this node will be received
 	// at this node as well as the other nodes.
@@ -90,7 +90,8 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// From OSDI: When the primary of view v + 1 receives 2f valid
 	// view-change messages for view v + 1 from other replicas,
 	// it multicasts a NEW-VIEW message to all other replicas.
-
+	node.VCStates[node.NextCandidateIdx].SetReceiveViewchangeTime(time.Now())
+	
 	// TODO: changeleader
 	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)
 	if newViewMsg == nil || node.MyInfo != nextPrimary {
@@ -110,12 +111,12 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	newViewMsg.Min_S = min_s
 
 	//fmt.Println(newViewMsg.PrepareMsg)
-	LogStage("NewView", false)
+//	LogStage("NewView", false)
 
 	LogMsg(newViewMsg)
 
 	node.Broadcast(newViewMsg, "/newview")
-	LogStage("NewView", true)
+//	LogStage("NewView", true)
 
 }
 
@@ -124,14 +125,14 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 	// max_s the highest sequence number in a prepare message in V.
 	var min_s int64 = 0
 
-	fmt.Println("***********************N E W V I E W***************************")
+	//fmt.Println("***********************N E W V I E W***************************")
 	for _, vcm := range newViewMsg.SetViewChangeMsgs {
 		if min_s < vcm.StableCheckPoint {
 			min_s = vcm.StableCheckPoint
 		}
 	}
 
-	fmt.Println("min_s ", min_s)
+//	fmt.Println("min_s ", min_s)
 
 	newViewMsg.EpochID = min_s / 4
 
@@ -141,11 +142,11 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// TODO verify new-view message
-	fmt.Printf("<<<<<<<<<<<<<<<<NewView>>>>>>>>>>>>>>>>: NextCandidateIdx: %d by %s\n", newviewMsg.NextCandidateIdx, newviewMsg.NodeID)
+	fmt.Printf("<<<<<<<<<<<<<<<<GetNewView>>>>>>>>>>>>>>>>: NextCandidateIdx: %d by %s\n", newviewMsg.NextCandidateIdx, newviewMsg.NodeID)
 
 	//////////////////////////////////////////////////////////////////////////
 	var totalcon int64 = node.TotalConsensus
-	fmt.Println("+++++ node.TotalConsensus", totalcon)
+//	fmt.Println("+++++ node.TotalConsensus", totalcon)
 
 	var lastCommittedMsg *consensus.PrepareMsg = nil
 	msgTotalCnt := int64(len(node.CommittedMsgs))
@@ -160,7 +161,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 		
 			state, _ := node.getState(i)
 			if i != lastCommittedMsg.SequenceID+1 {
-				fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
+//				fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
 				ch2 := state.GetMsgExitSendChannel()
 				ch2 <- 0
 			}
@@ -188,20 +189,20 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// Fill missing states and messages
 	node.FillHole(newviewMsg)
-	fmt.Println("==================After fillhole=============== ")
+	//fmt.Println("==================After fillhole=============== ")
 	// Change View and Primary
 	//node.updateView(node.NextCandidateIdex)
 	node.StableCheckPoint = newviewMsg.Min_S
 	
 
-	fmt.Println("node.NextCandidateIdex: ",node.NextCandidateIdx)
+//	fmt.Println("node.NextCandidateIdex: ",node.NextCandidateIdx)
 
-	fmt.Println("node.TotalConsensus:  ",node.TotalConsensus)
+//	fmt.Println("node.TotalConsensus:  ",node.TotalConsensus)
 
-	fmt.Printf("node.StableCheckPoint: %d , newviewMsg.Min_S: %d\n", node.StableCheckPoint, newviewMsg.Min_S)
+///	fmt.Printf("node.StableCheckPoint: %d , newviewMsg.Min_S: %d\n", node.StableCheckPoint, newviewMsg.Min_S)
 
 
-	//fmt.Println("newviewMsg.PrepareMsg: ", newviewMsg.PrepareMsg)
+//	fmt.Println("newviewMsg.PrepareMsg: ", newviewMsg.PrepareMsg)
 	
 	viewchangechannel := ViewChangeChannel{
 		Min_S: newviewMsg.Min_S,
@@ -221,9 +222,9 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 	// Check the number of states
-	fmt.Println("node.TotalConsensus :  ",node.TotalConsensus)
+//	fmt.Println("node.TotalConsensus :  ",node.TotalConsensus)
 
-	fmt.Println("newviewMsg.Min_S : ", newviewMsg.Min_S)
+//	fmt.Println("newviewMsg.Min_S : ", newviewMsg.Min_S)
 	//fmt.Println("newviewMsg.Max_S : ", newviewMsg.Max_S)
 
 	// Currunt Max sequence number of committed request
@@ -233,7 +234,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 			committedMax = int64(seq)
 		}
 	}
-	fmt.Println("committedMax : ", committedMax)
+//	fmt.Println("committedMax : ", committedMax)
 	for committedMax <= newviewMsg.Min_S {
 		var prepare consensus.PrepareMsg
 		newSequenceID := committedMax
@@ -244,7 +245,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		prepare.NodeID = ""
 
 
-		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
+//		fmt.Println("no request in node.CommittedMsgs : ", newSequenceID)
 		node.CommittedMsgs[newSequenceID] = &prepare
 		committedMax += 1
 	}
@@ -255,17 +256,17 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		atomic.AddInt64(&node.TotalConsensus, 1)
 	}
 
-	fmt.Println("+++++++++++++++++++FILLHOLE DONE++++++++++++++++++++")
+//	fmt.Println("+++++++++++++++++++FILLHOLE DONE++++++++++++++++++++")
 
 }
 
 func (node *Node) updateEpochID(sequenceID int64) {
-	epochID := sequenceID / 4
+	epochID := sequenceID / 10
 	node.EpochID = epochID
 }
 
 func (node *Node) updateView(viewID int64) {
-	var participant int64 = 4
+	var participant int64 = 10
 	node.View.ID = viewID % participant
 	node.View.Primary = node.getPrimaryInfoByID(node.View.ID)
 }
@@ -301,11 +302,10 @@ func (node *Node) CreateViewChangeMsg(setp map[int64]*consensus.SetPm) *consensu
 	// for this node.
 	stableCheckPoint := node.StableCheckPoint
 	//setc := node.CheckPointMsgsLog[stableCheckPoint]
-	fmt.Println("node.StableCheckPoint : ", stableCheckPoint)
+//	fmt.Println("node.StableCheckPoint : ", stableCheckPoint)
 	//fmt.Println("setc",setc)
 
 	//committeeNum := int64(7)
-	node.NextCandidateIdx = int64(4)
 
 	return &consensus.ViewChangeMsg{
 		NodeID: node.MyInfo.NodeID,
