@@ -313,6 +313,7 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	case consensus.COMMITTED:
 		state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
+			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 			node.MsgExecution <- state.GetPrepareMsg()
 		}
 		// Log last sequence id for checkpointing
@@ -342,6 +343,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	// Log last sequence id for checkpointing
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
 	if node.Prepared[collateMsg.SequenceID] == 1 {
+		fmt.Println("[EXECUTECOMMIT]",",",collateMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 		node.MsgExecution <- state.GetPrepareMsg()
 	}
 	// Attach node ID to the message and broadcast collateMsg..
@@ -457,8 +459,9 @@ func (node *Node) executeMsg() {
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
 			if node.States[node.StableCheckPoint]!=nil && node.States[node.StableCheckPoint].GetReqMsg() != nil {
-				fmt.Println("[EXECUTE TIME] PREPARE : ", time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
-				fmt.Println("[EXECUTE TIME] REQUEST : ", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
+				fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
+				fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
+
 			} else {
 				fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
 				fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
