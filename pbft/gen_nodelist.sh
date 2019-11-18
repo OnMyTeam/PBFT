@@ -9,7 +9,23 @@ then
 fi
 
 TOTALNODE=$1
-NODELISTPATH="./seedList/nodeNum"$TOTALNODE"/nodeList_aws.json"
-echo `awk -v N=43 -v ENV=2 -v N1=$3 -v N2=$4 -v N3=$5 -v N4=$6 -v N5=$7 -v N6=$8 -v N7=$9 -f nodelist2.awk /dev/null` > $NODELISTPATH
+if [ $2 -eq 0 ];then
+	echo "local"
+	NODELISTPATH="./seedList/nodeNum"$TOTALNODE"/nodeList.json"
+  echo `awk -v N=$1 -v ENV=$2 -v N1=$3 -v N2=$4 -v N3=$5 -v N4=$6 -v N5=$7 -v N6=$8 -v N7=$9 -f nodelist2.awk /dev/null` > $NODELISTPATH
+	exit
+fi
+if [ $2 -eq 1 ];then
+	echo "remote"
+	NODELISTPATH="./seedList/nodeNum"$TOTALNODE"/nodeList2_"$TOTALNODE".json"
+  echo `awk -v N=$1 -v ENV=$2 -v N1=$3 -v N2=$4 -v N3=$5 -v N4=$6 -v N5=$7 -v N6=$8 -v N7=$9 -f nodelist2.awk /dev/null` > $NODELISTPATH
+	exit
+fi
+if [ $2 -eq 2 ];then
+	echo "aws"
+	NODELISTPATH="./seedList/nodeNum"$TOTALNODE"/nodeList_aws.json"
+  echo `awk -v N=$1 -v ENV=$2 -v N1=$3 -v N2=$4 -v N3=$5 -v N4=$6 -v N5=$7 -v N6=$8 -v N7=$9 -f nodelist2.awk /dev/null` > $NODELISTPATH
+  exit
+fi
 
 wait
