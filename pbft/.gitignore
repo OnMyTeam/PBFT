@@ -20,7 +20,7 @@
 logs/
 
 # Key files
-#keys/
+keys/
 
 # Default executable file built on Linux
 main

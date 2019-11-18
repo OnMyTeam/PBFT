@@ -62,10 +62,17 @@ func main() {
 		}
 		nodeListFile = "./seedList/nodeNum"+os.Args[2]+"/nodeList.json"
 	} else if len(os.Args) == 4{
-		for i := 1; i <20; i++ {
-			seedListFile[i] = "./seedList/nodeNum"+os.Args[2]+"/seedList"+strconv.Itoa(i)+".txt"
+		if os.Args[3] != "AWS" {
+			for i := 1; i < 20; i++ {
+				seedListFile[i] = "./seedList/nodeNum" + os.Args[2] + "/seedList" + strconv.Itoa(i) + ".txt"
+			}
+			nodeListFile = "./seedList/nodeNum" + os.Args[2] + "/nodeList2_" + os.Args[2] + ".json"
+		} else {
+			for i := 1; i < 20; i++ {
+				seedListFile[i] = "./seedList/nodeNum" + os.Args[2] + "/seedList" + strconv.Itoa(i) + ".txt"
+			}
+			nodeListFile = "./seedList/nodeNum" + os.Args[2] + "/nodeList_aws.json"
 		}
-		nodeListFile = "./seedList/nodeNum"+os.Args[2]+"/nodeList2_"+os.Args[2]+".json"
 	}
 	jsonFile, err := os.Open(nodeListFile)
 	AssertError(err)
