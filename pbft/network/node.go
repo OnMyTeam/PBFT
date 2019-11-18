@@ -248,6 +248,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
 	requestMsg := ReqPrePareMsgs.RequestMsg
+	fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	// When receive Prepare, save current time
@@ -431,6 +432,7 @@ func (node *Node) executeMsg() {
 		prepareMsg := <- node.MsgExecution
 		node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
+		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,",",time.Now().UnixNano())
 		for {
 			var lastSequenceID int64
 			// Find the last committed message.
