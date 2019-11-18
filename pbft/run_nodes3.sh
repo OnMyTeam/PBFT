@@ -49,8 +49,8 @@ echo "Try to spawn $TOTALNODE nodes"
 
 echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 
-mynum=`expr $1 + 1`
-mynum=`expr $mynum / 2`
+mynum=`expr $1 + 2`
+mynum=`expr $mynum / 3`
 
 for i in `seq 1 $mynum`
 do

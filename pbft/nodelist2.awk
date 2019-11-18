@@ -27,7 +27,7 @@ END {
        print "]"
    } else if (ENV == 1){ #REMOTE
        print "["
-       for (i = 1; i <= (N+1)/2; i++) {
+       for (i = 1; i <= (N+2)/3; i++) {
            if (i < N) {
                COMMA=","
            } else {
@@ -36,7 +36,7 @@ END {
            printf "\t{\"nodeID\": \"Node%d\", \"url\": \"%s:%d\"}%s\n",
            i, N1, portnumber + i, COMMA
        }
-       for (i = (N+1)/2+1; i <= N+1; i++) {
+       for (i = (N+2)/3+1; i <= (N*2+1)/3; i++) {
            if (i < N) {
                COMMA=","
            } else {
@@ -44,6 +44,15 @@ END {
            }
            printf "\t{\"nodeID\": \"Node%d\", \"url\": \"%s:%d\"}%s\n",
            i, N2, portnumber + i, COMMA
+       }
+       for (i = (N*2+1)/3+1; i <= N; i++) {
+           if (i < N) {
+               COMMA=","
+           } else {
+               COMMA=""
+           }
+           printf "\t{\"nodeID\": \"Node%d\", \"url\": \"%s:%d\"}%s\n",
+           i, N3, portnumber + i, COMMA
        }
        print "]"
    } else if (ENV == 2){ #AWS
