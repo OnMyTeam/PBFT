@@ -266,11 +266,11 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	// Stop prepare phase and start vote phase if it is not committed
 	if node.Committed[prepareMsg.SequenceID] == 1 {
 		// Stop prepare phase and execute the sequence if it is committed
-		state.GetTimerStopSendChannel() <- "Prepare"
+		//state.GetTimerStopSendChannel() <- "Prepare"
 		node.MsgExecution <- prepareMsg
 	} else {
-		state.GetTimerStopSendChannel() <- "Prepare"
-		state.GetTimerStartSendChannel() <- "Vote"
+		//state.GetTimerStopSendChannel() <- "Prepare"
+		//state.GetTimerStartSendChannel() <- "Vote"
 	}
 
 	// Log last sequence id for checkpointing
@@ -306,11 +306,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	switch collateMsg.MsgType {
 	// Stop vote phase and start collate phase if it is not committed
 	case consensus.UNCOMMITTED:
-		state.GetTimerStopSendChannel() <- "Vote"
-		state.GetTimerStartSendChannel() <- "Collate"
+		//state.GetTimerStopSendChannel() <- "Vote"
+		//state.GetTimerStartSendChannel() <- "Collate"
 	// Stop vote phase and execute the sequence if it is committed
 	case consensus.COMMITTED:
-		state.GetTimerStopSendChannel() <- "Vote"
+		//state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
 			//fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 			//fmt.Println("[CMREQUESTTIME],",",",voteMsg.SequenceID,",", time.Since(time.Unix(0, state.GetReqMsg().Timestamp)))
@@ -378,8 +378,8 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 		state = node.States[seqID]
 		node.StatesMutex.Unlock()
 		node.startTransitionWithDeadline(seqID, state)
-		state.GetTimerStartSendChannel() <- "ViewChange"
-		state.GetTimerStartSendChannel() <- "Prepare"
+		//state.GetTimerStartSendChannel() <- "ViewChange"
+		//state.GetTimerStartSendChannel() <- "Prepare"
 	}else {
 		node.StatesMutex.Unlock()
 	}
@@ -434,7 +434,7 @@ func (node *Node) executeMsg() {
 	pairs := make(map[int64]*consensus.PrepareMsg)
 	for {
 		prepareMsg := <- node.MsgExecution
-		node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
+		//node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
 		fmt.Println("[CommitMsg] SequenceID:",prepareMsg.SequenceID,"/",time.Now().UnixNano())
 		for {
