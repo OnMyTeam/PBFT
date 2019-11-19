@@ -39,7 +39,6 @@ type State struct {
 	collateCanceled		chan struct {}
 	viewchangeCanceled	chan struct {}
 
-
 }
 
 type MsgLogs struct {

@@ -262,25 +262,23 @@ func (server *Server) sendDummyMsg() {
 				server.node.updateView(server.node.StableCheckPoint)
 				server.node.updateEpochID(server.node.StableCheckPoint)
 				
-
-				
-				fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx-1].GetReceiveViewchangeTime()))
-
-				if sequenceID % committee_num == 0 {
-					server.node.VCStates = make(map[int64]*consensus.VCState)
-					server.node.NextCandidateIdx = committee_num
-				}
-
 				fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
 				primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
 
 				
+				fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx].GetReceiveViewchangeTime()))
+
 				atomic.AddInt64(&server.node.NextCandidateIdx, 1)
 
+				if sequenceID % committee_num == 0 {
+					server.node.VCStates = make(map[int64]*consensus.VCState)
+					server.node.NextCandidateIdx = committee_num
+					primaryNode = server.node.NodeTable[server.node.NextCandidateIdx]
+				}
 
 				go server.node.startTransitionWithDeadline(nil)
 				server.node.IsViewChanging = false
-				
+
 				if primaryNode.NodeID != server.node.MyInfo.NodeID {
 					continue
 				}

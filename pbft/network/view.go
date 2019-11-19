@@ -6,6 +6,7 @@ import (
 	"time"
 	"sync/atomic"
 	"unsafe"
+	"log"
 )
 
 func (node *Node) StartViewChange() {
@@ -134,13 +135,12 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 
 //	fmt.Println("min_s ", min_s)
 
-	newViewMsg.EpochID = min_s / 4
+	newViewMsg.EpochID = min_s / 10
 
 	return min_s
 }
 
 func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
-
 	// TODO verify new-view message
 	fmt.Printf("<<<<<<<<<<<<<<<<GetNewView>>>>>>>>>>>>>>>>: NextCandidateIdx: %d by %s\n", newviewMsg.NextCandidateIdx, newviewMsg.NodeID)
 
@@ -179,7 +179,29 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 		}
 
 	}
+
+	node.NextCandidateIdx = newviewMsg.NextCandidateIdx
+
+	var vcs *consensus.VCState
+	vcs = node.VCStates[node.NextCandidateIdx]
+	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
+	// Create a view state if it does not exist.
+	for vcs == nil {
+		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint)
+		// Register state into node
+		node.VCStatesMutex.Lock()
+		node.VCStates[node.NextCandidateIdx] = vcs
+		node.VCStatesMutex.Unlock()
+
+		// Assign new VCState if node did not create the state.
+		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(node.VCStates[node.NextCandidateIdx])), unsafe.Pointer(nil), unsafe.Pointer(vcs)) {
+			vcs = node.VCStates[node.NextCandidateIdx]
+		}
+	}
 	
+	for _, vcm := range newviewMsg.SetViewChangeMsgs {
+		node.GetViewChange(vcm)
+	}
 	//////////////////////////////////////////////////////////////////////////
 
 	// Register new-view message into this node
@@ -193,7 +215,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	// Change View and Primary
 	//node.updateView(node.NextCandidateIdex)
 	node.StableCheckPoint = newviewMsg.Min_S
-	
+	node.EpochID = newviewMsg.EpochID
 
 //	fmt.Println("node.NextCandidateIdex: ",node.NextCandidateIdx)
 
@@ -241,7 +263,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		prepare.SequenceID = newSequenceID
 		prepare.ViewID = int64(0)
 		prepare.Digest = ""
-		prepare.EpochID = 0
+		prepare.EpochID = newSequenceID / 10
 		prepare.NodeID = ""
 
 
@@ -278,6 +300,9 @@ func (node *Node) isMyNodePrimary() bool {
 
 func (node *Node) getPrimaryInfoByID(viewID int64) *NodeInfo {
 	viewIdx := viewID 
+	if viewIdx > int64(len(node.NodeTable)) {
+		log.Printf("Fail this Consensus by %s\n", node.MyInfo.NodeID)
+	}
 	return node.NodeTable[viewIdx]
 }
 
