@@ -267,11 +267,16 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	}
 
 	// Stop prepare phase and start vote phase if it is not committed
+	fmt.Println("[Lock-resolve Collate Lock Try]")
+	node.CommittedMutex.Lock()
+	fmt.Println("[Lock-resolve Collate Lock Release]")
 	if node.Committed[prepareMsg.SequenceID] == 1 {
+		node.CommittedMutex.Unlock()
 		// Stop prepare phase and execute the sequence if it is committed
 		//state.GetTimerStopSendChannel() <- "Prepare"
 		node.MsgExecution <- prepareMsg
 	} else {
+		node.CommittedMutex.Unlock()
 		//state.GetTimerStopSendChannel() <- "Prepare"
 		//state.GetTimerStartSendChannel() <- "Vote"
 	}
@@ -279,6 +284,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	node.BroadCastNextPrepareMsgIfPrimary(prepareMsg.SequenceID + 1)
 	// Log last sequence id for checkpointing
 	atomic.AddInt64(&node.Prepared[prepareMsg.SequenceID],1)
+
 
 	// Attach node ID to the message and broadcast voteMsg..
 	voteMsg.NodeID = node.MyInfo.NodeID
@@ -356,14 +362,13 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		//state.GetTimerStopSendChannel() <- "Vote"
 		node.PreparedMutex.Lock()
 		if node.Prepared[voteMsg.SequenceID] == 1 {
-			node.PreparedMutex.Unlock()
 			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 			node.MsgExecution <- state.GetPrepareMsg()
-		} else {
-			node.PreparedMutex.Unlock()
 		}
-		// Log last sequence id for checkpointing
 		atomic.AddInt64(&node.Committed[voteMsg.SequenceID], 1)
+		node.PreparedMutex.Unlock()
+		// Log last sequence id for checkpointing
+
 	}
 
 	// Attach node ID to the message
@@ -389,14 +394,12 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 
 	// Log last sequence id for checkpointing
 	node.PreparedMutex.Lock()
-	if node.Prepared[collateMsg.SequenceID] == 1 {
-		node.PreparedMutex.Unlock()
+	if node.Prepared[collateMsg.SequenceID] == 1 {	
 		fmt.Println("[EXECUTECOMMIT]",",",collateMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 		node.MsgExecution <- state.GetPrepareMsg()
-	}else{
-		node.PreparedMutex.Unlock()
 	}
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
+	node.PreparedMutex.Unlock()
 	// Attach node ID to the message and broadcast collateMsg..
 	newCollateMsg.NodeID = node.MyInfo.NodeID
 	node.Broadcast(newCollateMsg, "/collate")
@@ -458,12 +461,13 @@ func (node *Node) resolveMsg() {
 			state.GetMsgSendChannel() <- msg
 
 		case *consensus.VoteMsg:
+			fmt.Println("[Lock-resolve Collate Lock Try]")
 			node.CommittedMutex.Lock()
+			fmt.Println("[Lock-resolve Collate Lock Release]")
 			if node.Committed[msg.SequenceID] >= 1 {
 				node.CommittedMutex.Unlock()
 				continue
 			}
-			node.CommittedMutex.Unlock()
 			node.StatesMutex.Lock()
 			state = node.States[msg.SequenceID]
 			node.StatesMutex.Unlock()
@@ -475,13 +479,15 @@ func (node *Node) resolveMsg() {
 			} else if state != nil {
 				state.GetMsgSendChannel() <- msg
 			}
+			node.CommittedMutex.Unlock()
 		case *consensus.CollateMsg:
+			fmt.Println("[Lock-resolve Collate Lock Try]")
 			node.CommittedMutex.Lock()
+			fmt.Println("[Lock-resolve Collate Lock Release]")
 			if node.Committed[msg.SequenceID] >= 1 {
 				node.CommittedMutex.Unlock()
 			 	continue
 			}
-			node.CommittedMutex.Unlock()
 			node.StatesMutex.Lock()
 			state = node.States[msg.SequenceID]
 			node.StatesMutex.Unlock()
@@ -493,6 +499,7 @@ func (node *Node) resolveMsg() {
 			} else if state != nil {
 				state.GetMsgSendChannel() <- msg
 			}
+			node.CommittedMutex.Unlock()
 		//case *consensus.CheckPointMsg:
 		//	node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
