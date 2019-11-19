@@ -291,8 +291,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	fmt.Printf("[GetVote] to %s from %s sequenceID: %d\n", 
-					node.MyInfo.NodeID, voteMsg.NodeID, voteMsg.SequenceID)
+	fmt.Println("[GetVote] to",node.MyInfo.NodeID," from ",voteMsg.NodeID," sequenceID:", voteMsg.SequenceID, time.Now().UnixNano()) 
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -313,8 +312,8 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	case consensus.COMMITTED:
 		state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
-			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
-			fmt.Println("[CMREQUESTTIME],",",",voteMsg.SequenceID,",", time.Since(time.Unix(0, state.GetReqMsg().Timestamp)))
+			//fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
+			//fmt.Println("[CMREQUESTTIME],",",",voteMsg.SequenceID,",", time.Since(time.Unix(0, state.GetReqMsg().Timestamp)))
 
 			node.MsgExecution <- state.GetPrepareMsg()
 		}
