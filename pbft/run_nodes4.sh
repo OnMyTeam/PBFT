@@ -52,7 +52,7 @@ echo `awk -v N=$1 -f nodelist.awk /dev/null` > $NODELISTPATH
 mynum=`expr $1 + 2`
 mynum=`expr $mynum / 3`
 mynum=`expr $mynum + 1`
-mynum_2=`expr $mynum + 4`
+mynum_2=`expr $mynum + 3`
 
 for i in `seq $mynum $mynum_2`
 do
