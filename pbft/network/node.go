@@ -161,10 +161,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 5000
-	sigma[consensus.NumOfPhase("Vote")] = 5000
-	sigma[consensus.NumOfPhase("Collate")] = 5000
-	sigma[consensus.NumOfPhase("ViewChange")] = 10000
+	sigma[consensus.NumOfPhase("Prepare")] = 50000
+	sigma[consensus.NumOfPhase("Vote")] = 50000
+	sigma[consensus.NumOfPhase("Collate")] = 50000
+	sigma[consensus.NumOfPhase("ViewChange")] = 100000
 
 	var timerArr			[4]*time.Timer
 	var cancelCh			[4]chan struct {}
@@ -266,11 +266,11 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	// Stop prepare phase and start vote phase if it is not committed
 	if node.Committed[prepareMsg.SequenceID] == 1 {
 		// Stop prepare phase and execute the sequence if it is committed
-		state.GetTimerStopSendChannel() <- "Prepare"
+		//state.GetTimerStopSendChannel() <- "Prepare"
 		node.MsgExecution <- prepareMsg
 	} else {
-		state.GetTimerStopSendChannel() <- "Prepare"
-		state.GetTimerStartSendChannel() <- "Vote"
+		//state.GetTimerStopSendChannel() <- "Prepare"
+		//state.GetTimerStartSendChannel() <- "Vote"
 	}
 
 	// Log last sequence id for checkpointing
@@ -307,11 +307,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	switch collateMsg.MsgType {
 	// Stop vote phase and start collate phase if it is not committed
 	case consensus.UNCOMMITTED:
-		state.GetTimerStopSendChannel() <- "Vote"
-		state.GetTimerStartSendChannel() <- "Collate"
+		//state.GetTimerStopSendChannel() <- "Vote"
+		//state.GetTimerStartSendChannel() <- "Collate"
 	// Stop vote phase and execute the sequence if it is committed
 	case consensus.COMMITTED:
-		state.GetTimerStopSendChannel() <- "Vote"
+		//state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
 			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
 			node.MsgExecution <- state.GetPrepareMsg()
@@ -338,7 +338,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	}
 
 	// Try to stop current phase timer
-	state.GetTimerStopSendChannel() <- "Collate"
+	//state.GetTimerStopSendChannel() <- "Collate"
 
 	// Log last sequence id for checkpointing
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
@@ -376,8 +376,8 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 		state = node.States[seqID]
 		node.StatesMutex.Unlock()
 		node.startTransitionWithDeadline(seqID, state)
-		state.GetTimerStartSendChannel() <- "ViewChange"
-		state.GetTimerStartSendChannel() <- "Prepare"
+		//state.GetTimerStartSendChannel() <- "ViewChange"
+		//state.GetTimerStartSendChannel() <- "Prepare"
 	}else {
 		node.StatesMutex.Unlock()
 	}
@@ -432,7 +432,7 @@ func (node *Node) executeMsg() {
 	pairs := make(map[int64]*consensus.PrepareMsg)
 	for {
 		prepareMsg := <- node.MsgExecution
-		node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
+		//node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
 		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,",",time.Now().UnixNano())
 		for {
@@ -452,6 +452,7 @@ func (node *Node) executeMsg() {
 			if p == nil {
 				break
 			}
+
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
@@ -461,13 +462,13 @@ func (node *Node) executeMsg() {
 			if node.States[node.StableCheckPoint]!=nil && node.States[node.StableCheckPoint].GetReqMsg() != nil {
 				fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
 				fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
-
+				ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
+				ch <- 0
 			} else {
 				fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
 				fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
 			}
-			ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
-			ch <- 0
+
 			node.StatesMutex.Unlock()
 			// TODO: execute appropriate operation.
 
