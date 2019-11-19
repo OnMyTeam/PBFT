@@ -139,6 +139,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 // Broadcast marshalled message.
 func (node *Node) Broadcast(msg interface{}, path string) {
 	jsonMsg, err := json.Marshal(msg)
+
 	if err != nil {
 		node.MsgError <- []error{err}
 		return
@@ -291,8 +292,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	fmt.Printf("[GetVote] to %s from %s sequenceID: %d\n", 
-					node.MyInfo.NodeID, voteMsg.NodeID, voteMsg.SequenceID)
+	fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from: ",voteMsg.NodeID, "seqId:", voteMsg.SequenceID, time.Now().UnixNano())
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -450,18 +450,19 @@ func (node *Node) executeMsg() {
 			p := pairs[lastSequenceID + 1]
 			
 			if p == nil {
+				//fmt.Println("[STAGE-DONE11] Commit SequenceID : ", int64(len(node.CommittedMsgs)))
 				break
 			}
-
+			fmt.Println("[Execute] sequeceID:", lastSequenceID + 1, time.Now().UnixNano())
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
-			fmt.Println("[STAGE-DONE] Commit SequenceID : ",lastSequenceID + 1)
+			//fmt.Println("[STAGE-DONE] Commit SequenceID : ",lastSequenceID + 1)
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
 			if node.States[node.StableCheckPoint]!=nil && node.States[node.StableCheckPoint].GetReqMsg() != nil {
-				fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
-				fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
+				//fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
+				//fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
 				ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
 				ch <- 0
 			} else {
@@ -487,7 +488,7 @@ func (node *Node) executeMsg() {
 				node.CheckPoint(checkPointMsg)
 			}*/
 
-			// delete(pairs, lastSequenceID + 1)
+			delete(pairs, lastSequenceID + 1)
 			
 		}
 

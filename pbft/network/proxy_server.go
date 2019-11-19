@@ -76,7 +76,7 @@ func (server *Server) DialOtherNodes() {
 	for _, nodeInfo := range server.node.NodeTable {
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
 	}
-	time.Sleep(time.Second * 10)
+	//time.Sleep(time.Second * 10)
 	go server.sendDummyMsg()
 	
 	// Wait.
@@ -130,6 +130,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
+			fmt.Println("[EndPrepare] to:",server.node.MyInfo.NodeID,"from:",msg.PrepareMsg.NodeID, time.Now().UnixNano())
 			server.node.MsgEntrance <- &msg
 		case "/vote":
 			var msg consensus.VoteMsg
@@ -192,7 +193,7 @@ func (server *Server) sendDummyMsg() {
 			if sequenceID % 10 == 1 && sequenceID != 1{
 				epoch += 1
 				seed = epoch % 19+1
-				server.node.setNewSeedList(int(seed))
+				//server.node.setNewSeedList(int(seed))
 			}
 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
 				continue
@@ -211,8 +212,10 @@ func (server *Server) sendDummyMsg() {
 
 			// Broadcast the dummy message.
 			errCh := make(chan error, 1)
+			
 			log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
 				server.node.MyInfo.NodeID, sequenceID)
+			fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
 			err := <-errCh
 			if err != nil {
@@ -261,6 +264,7 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.Signatu
 	err := json.Unmarshal(msg, &sigMgs)
 	ok := false
 	if err != nil {
+		//log.Println("dettachSignature error ", err)
 		return sigMgs, err, false
 	}
 	ok = consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
