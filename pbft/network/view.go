@@ -3,7 +3,7 @@ package network
 import (
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"fmt"
-	"time"
+	//"time"
 	"sync/atomic"
 	"unsafe"
 	"log"
@@ -91,7 +91,6 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// From OSDI: When the primary of view v + 1 receives 2f valid
 	// view-change messages for view v + 1 from other replicas,
 	// it multicasts a NEW-VIEW message to all other replicas.
-	node.VCStates[node.NextCandidateIdx].SetReceiveViewchangeTime(time.Now())
 	
 	// TODO: changeleader
 	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)

@@ -72,6 +72,9 @@ func (vcs *VCState) ViewChange(viewchangeMsg *ViewChangeMsg) (*NewViewMsg, error
 	vcs.ViewChangeMsgLogs.ViewChangeMsgMutex.Unlock()
 	newTotalViewchangeMsg := atomic.AddInt32(&vcs.ViewChangeMsgLogs.TotalViewChangeMsg, 1)
 
+	if int64(newTotalViewchangeMsg) == int64(vcs.f + 1) {
+		vcs.SetReceiveViewchangeTime(time.Now())
+	}
 	// Print current voting status.
 	fmt.Printf("[View-Change-Vote]: %d\n", newTotalViewchangeMsg)
 
