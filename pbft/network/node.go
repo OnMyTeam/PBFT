@@ -273,8 +273,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	}
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	fmt.Printf("[GetVote] to %s from %s sequenceID: %d\n", 
-					node.MyInfo.NodeID, voteMsg.NodeID, voteMsg.SequenceID)
+	fmt.Println("[GetVote] to", node.MyInfo.NodeID ,"from", voteMsg.NodeID ,"sequenceID:", voteMsg.SequenceID, time.Now().UnixNano()) 
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -452,6 +451,7 @@ func (node *Node) executeMsg() {
 	for {
 		prepareMsg := <- node.MsgExecution
 		pairs[prepareMsg.SequenceID] = prepareMsg
+		fmt.Println("[CommitMsg] sequenceID:", prepareMsg.SequenceID, time.Now().UnixNano())
 		for {
 			var lastSequenceID int64
 
@@ -463,7 +463,7 @@ func (node *Node) executeMsg() {
 			} else {
 				lastSequenceID = 0
 			}
-			fmt.Println("[executeMsg] LastSequenceID : ", lastSequenceID)
+			//fmt.Println("[executeMsg] LastSequenceID : ", lastSequenceID)
 			// Stop execution if the message for the
 			// current sequence is not ready to execute.
 			p := pairs[lastSequenceID + 1]
@@ -471,6 +471,7 @@ func (node *Node) executeMsg() {
 			if p == nil {
 				break
 			}
+			fmt.Println("[Execute] sequenceID:",lastSequenceID + 1,",",time.Now().UnixNano())
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
