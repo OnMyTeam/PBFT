@@ -130,7 +130,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 				fmt.Println("[receiveLoop-error] seq 0 came in")
 				continue
 			}
-			fmt.Println("[EndPrepare]",msg.PrepareMsg.SequenceID,time.Now().UnixNano())
+			fmt.Println("[EndPrepare] to",server.node.MyInfo.NodeID, "from ",msg.PrepareMsg.NodeID,msg.PrepareMsg.SequenceID,"/",time.Now().UnixNano())
 			server.node.MsgEntrance <- &msg
 		case "/vote":
 			var msg consensus.VoteMsg
@@ -214,7 +214,7 @@ func (server *Server) sendDummyMsg() {
 			errCh := make(chan error, 1)
 			log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
 				server.node.MyInfo.NodeID, sequenceID)
-			fmt.Println("[StartPrepare]",sequenceID,"/", time.Now().UnixNano())
+			fmt.Println("[StartPrepare] SequenceID:",sequenceID,"/", time.Now().UnixNano())
 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
 			err := <-errCh
 			if err != nil {

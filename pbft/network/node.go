@@ -215,7 +215,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				}
 				cancelCh[phase] <- struct {}{}
 			case <-ExitCh:
-				fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
+				//fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
 				node.StatesMutex.Lock()
 				node.States[seqID] = nil
 				node.StatesMutex.Unlock()
@@ -248,9 +248,9 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
 	requestMsg := ReqPrePareMsgs.RequestMsg
-	fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
-	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
-						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
+	//fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
+	//fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
+						//node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	// When receive Prepare, save current time
 	state.SetReceivePrepareTime(time.Now())
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
@@ -291,7 +291,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 
 }
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	fmt.Println("[GetVote] to",node.MyInfo.NodeID," from ",voteMsg.NodeID," sequenceID:", voteMsg.SequenceID, time.Now().UnixNano()) 
+	fmt.Println("[GetVote] to/",node.MyInfo.NodeID," from /",voteMsg.NodeID,"/ sequenceID:", voteMsg.SequenceID,"/", time.Now().UnixNano()) 
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -436,7 +436,7 @@ func (node *Node) executeMsg() {
 		prepareMsg := <- node.MsgExecution
 		node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
-		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,",",time.Now().UnixNano())
+		fmt.Println("[CommitMsg] SequenceID:",prepareMsg.SequenceID,"/",time.Now().UnixNano())
 		for {
 			var lastSequenceID int64
 			// Find the last committed message.
@@ -461,12 +461,12 @@ func (node *Node) executeMsg() {
 			node.StableCheckPoint = lastSequenceID + 1
 			node.StatesMutex.Lock()
 			if node.States[node.StableCheckPoint]!=nil && node.States[node.StableCheckPoint].GetReqMsg() != nil {
-				fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
-				fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
+				//fmt.Println("[ECPREPARETIME],",node.StableCheckPoint,",",time.Since(node.States[node.StableCheckPoint].GetReceivePrepareTime()))
+				//fmt.Println("[ECREQUESTTIME],", time.Since(time.Unix(0, node.States[node.StableCheckPoint].GetReqMsg().Timestamp)))
 
 			} else {
-				fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
-				fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
+				//fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
+				//fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
 			}
 			ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
 			ch <- 0
