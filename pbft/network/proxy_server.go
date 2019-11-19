@@ -76,8 +76,8 @@ func (server *Server) DialOtherNodes() {
 	for _, nodeInfo := range server.node.NodeTable {
 		cPrepare[nodeInfo.NodeID] = server.setReceiveLoop("/prepare", nodeInfo)
 	}
-	//time.Sleep(time.Second * 10)
-	go server.sendDummyMsg()
+	time.Sleep(time.Second * 3)
+	server.sendGenesisMsgIfPrimary()
 	
 	// Wait.
 	select {}
@@ -164,11 +164,10 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 		}
 	}
 }
-func (server *Server) sendDummyMsg() {
-	const sendPeriod time.Duration = 500
 
-	ticker := time.NewTicker(time.Millisecond * sendPeriod)
-	defer ticker.Stop()
+func (server *Server) sendGenesisMsgIfPrimary() {
+	var sequenceID int64 = 1
+	var seed int = -1
 
 	data := make([]byte, 1 << 20)
 	for i := range data {
@@ -176,59 +175,40 @@ func (server *Server) sendDummyMsg() {
 	}
 	data[len(data)-1]=0
 
-	var sequenceID int64 = 0
-	var epoch int64 = 0
-	var seed int64 = -1
-	fmt.Println("start sendDummy")
-
-	for  {
-		select {
-		case <-ticker.C:
-			//if server.node.IsViewChanging {
-			//	continue
-			//}
-
-			sequenceID += 1
-			primaryNode := server.node.getPrimaryInfoByID(sequenceID)
-			if sequenceID % 10 == 1 && sequenceID != 1{
-				epoch += 1
-				seed = epoch % 19+1
-				//server.node.setNewSeedList(int(seed))
-			}
-			if primaryNode.NodeID != server.node.MyInfo.NodeID {
-				continue
-			}
-			if sequenceID % 10 == 1 && sequenceID != 1 {
-				log.Println("Epoch ",epoch," seed Created: seed is ", seed)
-				//seed=int64(rand.Intn(18)+1)
-				//server.node.setNewSeedList(seed)
-			} else {
-				seed=-1
-			}
-
-			dummy := dummyMsg("Op1", "Client1", data, 
-				server.node.View.ID,int64(sequenceID),
-				server.node.MyInfo.NodeID, int(seed))
-
-			// Broadcast the dummy message.
-			errCh := make(chan error, 1)
-			
-			log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-				server.node.MyInfo.NodeID, sequenceID)
-			fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
-			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
-			err := <-errCh
-			if err != nil {
-				log.Println(err)
-			}
-
-		}
-
+	primaryNode := server.node.getPrimaryInfoByID(sequenceID)
+		
+	if primaryNode.NodeID != server.node.MyInfo.NodeID {
+		return
 	}
+	prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
+		server.node.View.ID,int64(sequenceID),
+		server.node.MyInfo.NodeID, int(seed))
+
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
+		server.node.MyInfo.NodeID, sequenceID)
+
+	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
+	server.node.Broadcast(prepareMsg, "/prepare")
+	// dummy := dummyMsg("Op1", "Client1", data, 
+	// 	server.node.View.ID,int64(sequenceID),
+	// 	server.node.MyInfo.NodeID, seed)
+
+	// errCh := make(chan error, 1)
+	
+	// log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
+	// 	server.node.MyInfo.NodeID, sequenceID)
+	// fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
+	// broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
+	// err := <-errCh
+	// if err != nil {
+	// 	log.Println(err)
+	// }
 }
+
 func broadcast(errCh chan<- error, url string, msg []byte, path string, privKey *ecdsa.PrivateKey) {
 	sigMgsBytes := attachSignatureMsg(msg, privKey, path)
 	url = "ws://" + url +"/prepare" // Fix using url.URL{}
+
 	c, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		errCh <- err
@@ -240,7 +220,6 @@ func broadcast(errCh chan<- error, url string, msg []byte, path string, privKey 
 		return
 	}
 	defer c.Close()
-
 	errCh <- nil
 }
 func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey, path string) []byte {
@@ -270,8 +249,8 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.Signatu
 	ok = consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
 	return sigMgs, nil, ok
 }
-func dummyMsg(operation string, clientID string, data []byte, 
-		viewID int64, sID int64, nodeID string, Seed int) []byte {
+func PrepareMsgMaking(operation string, clientID string, data []byte, 
+	viewID int64, sID int64, nodeID string, Seed int) *consensus.ReqPrePareMsgs {
 	var RequestMsg consensus.RequestMsg
 	RequestMsg.Timestamp = time.Now().UnixNano()
 	RequestMsg.Operation = operation
@@ -280,6 +259,10 @@ func dummyMsg(operation string, clientID string, data []byte,
 	RequestMsg.SequenceID = sID
 	
 	digest, err := consensus.Digest(RequestMsg)
+
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	var PrepareMsg consensus.PrepareMsg
 	PrepareMsg.ViewID = viewID
@@ -293,11 +276,36 @@ func dummyMsg(operation string, clientID string, data []byte,
 	ReqPrePareMsgs.RequestMsg = &RequestMsg
 	ReqPrePareMsgs.PrepareMsg = &PrepareMsg
 
-	jsonMsg, err := json.Marshal(ReqPrePareMsgs)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-
-	return []byte(jsonMsg)
+	return &ReqPrePareMsgs
 }
+// func dummyMsg(operation string, clientID string, data []byte, 
+// 		viewID int64, sID int64, nodeID string, Seed int) []byte {
+// 	var RequestMsg consensus.RequestMsg
+// 	RequestMsg.Timestamp = time.Now().UnixNano()
+// 	RequestMsg.Operation = operation
+// 	RequestMsg.ClientID = clientID
+// 	RequestMsg.Data = string(data)
+// 	RequestMsg.SequenceID = sID
+	
+// 	digest, err := consensus.Digest(RequestMsg)
+
+// 	var PrepareMsg consensus.PrepareMsg
+// 	PrepareMsg.ViewID = viewID
+// 	PrepareMsg.SequenceID = sID
+// 	PrepareMsg.Digest = digest
+// 	PrepareMsg.EpochID = 0
+// 	PrepareMsg.NodeID = nodeID
+// 	PrepareMsg.Seed= Seed
+
+// 	var ReqPrePareMsgs consensus.ReqPrePareMsgs
+// 	ReqPrePareMsgs.RequestMsg = &RequestMsg
+// 	ReqPrePareMsgs.PrepareMsg = &PrepareMsg
+
+// 	jsonMsg, err := json.Marshal(ReqPrePareMsgs)
+// 	if err != nil {
+// 		log.Println(err)
+// 		return nil
+// 	}
+
+// 	return []byte(jsonMsg)
+// }

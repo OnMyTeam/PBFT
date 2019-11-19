@@ -108,7 +108,6 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 	state.MsgLogs.PrepareMsg = prepareMsg
 
 	state.SequenceID = prepareMsg.SequenceID
-
 	voteMsg = VoteMsg{
 		ViewID: state.ViewID,
 		Digest: state.MsgLogs.Digest,

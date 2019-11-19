@@ -7,9 +7,10 @@ import (
 	"time"
 	// "context"
 	"crypto/ecdsa"
-	//"log"
+	"log"
 	"sync"
 	"sync/atomic"
+	//"runtime"
 )
 
 type Node struct {
@@ -32,6 +33,7 @@ type Node struct {
 
 	// Channels
 	MsgEntrance   chan interface{}
+	MsgSend       chan interface{}
 	MsgDelivery   chan interface{}
 	MsgExecution  chan *consensus.PrepareMsg
 	MsgOutbound   chan *MsgOut
@@ -81,7 +83,7 @@ const CoolingTime = time.Millisecond * 2
 const CoolingTotalErrMsg = 30
 
 // Number of outbound connection for a node.
-const MaxOutboundConnection = 1000
+const MaxOutboundConnection = 500
 
 func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*NodeInfo,
 			viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
@@ -139,13 +141,13 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 // Broadcast marshalled message.
 func (node *Node) Broadcast(msg interface{}, path string) {
 	jsonMsg, err := json.Marshal(msg)
-
 	if err != nil {
 		node.MsgError <- []error{err}
 		return
 	}
 	node.MsgOutbound <- &MsgOut{IP: node.MyInfo.Url, Msg: jsonMsg, Path: path}
 }
+
 func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT) {
 	// time.Sleep(time.Millisecond*sendPeriod)
 	// Set deadline based on the given timestamp.
@@ -284,15 +286,57 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	// Start next sequence thread if does not exists
 	node.StartThreadIfNotExists(prepareMsg.SequenceID + 1)
 
+	node.BroadCastNextPrepareMsgIfPrimary(prepareMsg.SequenceID + 1)
 	if prepareMsg.Seed != -1 {
 		//log.Println("Prepare for next Epoch",prepareMsg.Seed)
 		//node.setNewSeedList(prepareMsg.Seed)
 	}
-
-
 }
+func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
+	time.Sleep(250)
+	var epoch int64 = 0
+	var seed int64 = -1
+
+	data := make([]byte, 1 << 20)
+	for i := range data {
+		data[i] = 'A'
+	}
+	data[len(data)-1]=0
+
+	primaryNode := node.getPrimaryInfoByID(sequenceID)
+
+	if sequenceID % 10 == 1 && sequenceID != 1{
+		epoch += 1
+		seed = epoch % 19+1
+		//server.node.setNewSeedList(int(seed))
+	} else {
+		seed = -1
+	}
+	//errCh := make(chan error, 1)
+	
+	if primaryNode.NodeID != node.MyInfo.NodeID {
+		return
+	}
+	
+	prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
+		node.View.ID,int64(sequenceID),
+		node.MyInfo.NodeID, int(seed))
+
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
+		node.MyInfo.NodeID, sequenceID)
+
+	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
+	node.Broadcast(prepareMsg, "/prepare")
+	fmt.Println("[StartPrepare] After Broadcast!")
+	//broadcast(errCh, node.MyInfo.Url, dummy, "/prepare", node.PrivKey)
+	// err := <-errCh
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+}
+
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from: ",voteMsg.NodeID, "seqId:", voteMsg.SequenceID, time.Now().UnixNano())
+	// fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from: ",voteMsg.NodeID, "seqId:", voteMsg.SequenceID, time.Now().UnixNano())
 
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
@@ -325,8 +369,8 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	node.Broadcast(collateMsg, "/collate")
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
-	fmt.Printf("[GetCollate] to %s from %s sequenceID: %d TYPE : %d \n", 
-					node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID, collateMsg.MsgType)
+	// fmt.Printf("[GetCollate] to %s from %s sequenceID: %d TYPE : %d \n", 
+	// 				node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID, collateMsg.MsgType)
 	newCollateMsg, err := state.Collate(collateMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -386,8 +430,9 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 func (node *Node) resolveMsg() {
 	for {
 		var state consensus.PBFT
-		var err error = nil
+		var err string = ""
 		msgDelivered := <-node.MsgDelivery
+		//fmt.Println("Message came in..")
 		// Resolve the message.
 		switch msg := msgDelivered.(type) {
 		// Signature check is already done at proxyserver receiveloop..
@@ -398,6 +443,7 @@ func (node *Node) resolveMsg() {
 			if node.Prepared[msg.PrepareMsg.SequenceID] == 1{
 				continue
 			}
+			fmt.Println(msg.PrepareMsg.SequenceID,"came in!!")
 			state = node.StartThreadIfNotExists(msg.PrepareMsg.SequenceID)
 			state.GetMsgSendChannel() <- msg
 
@@ -405,14 +451,32 @@ func (node *Node) resolveMsg() {
 			if node.Committed[msg.SequenceID] >= 1 {
 				continue
 			}
-			state = node.StartThreadIfNotExists(msg.SequenceID)
-			state.GetMsgSendChannel() <- msg
+			node.StatesMutex.Lock()
+			state = node.States[msg.SequenceID]
+			node.StatesMutex.Unlock()
+			if state == nil && msg.SequenceID != 1 {
+				state = node.StartThreadIfNotExists(msg.SequenceID)
+				state.GetMsgSendChannel() <- msg
+			} else if state == nil && msg.SequenceID == 1 {
+				err = "Genesis message is not came in.."
+			} else if state != nil {
+				state.GetMsgSendChannel() <- msg
+			}
 		case *consensus.CollateMsg:
 			if node.Committed[msg.SequenceID] >= 1 {
 			 	continue
 			}
-			state = node.StartThreadIfNotExists(msg.SequenceID)
-			state.GetMsgSendChannel() <- msg
+			node.StatesMutex.Lock()
+			state = node.States[msg.SequenceID]
+			node.StatesMutex.Unlock()
+			if state == nil && msg.SequenceID != 1 {
+				state = node.StartThreadIfNotExists(msg.SequenceID)
+				state.GetMsgSendChannel() <- msg
+			} else if state == nil && msg.SequenceID == 1 {
+				err = "Genesis message is not came in.."
+			} else if state != nil {
+				state.GetMsgSendChannel() <- msg
+			}
 		//case *consensus.CheckPointMsg:
 		//	node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
@@ -420,12 +484,15 @@ func (node *Node) resolveMsg() {
 		case *consensus.NewViewMsg:
 			node.GetNewView(msg)
 		}
-		if err != nil {
+		if err != "" {
 			// Print error.
-			node.MsgError <- []error{err}
+			//node.MsgError <- []error{err}
 			// Send message into dispatcher.
-		//	node.MsgDelivery <- msgDelivered
+			fmt.Println(err)
+			node.MsgDelivery <- msgDelivered
+			time.Sleep(100)
 		}
+		//runtime.Gosched()
 	}
 }
 func (node *Node) executeMsg() {
@@ -515,7 +582,9 @@ func (node *Node) sendMsg() {
 
 			// Goroutine for concurrent broadcast()
 			go func() {
+			
 				broadcast(errCh, msg.IP, msg.Msg, msg.Path, node.PrivKey)
+
 			}()
 			select {
 			case err := <-errCh:
