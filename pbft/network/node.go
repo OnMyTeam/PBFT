@@ -161,10 +161,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 5000
-	sigma[consensus.NumOfPhase("Vote")] = 5000
-	sigma[consensus.NumOfPhase("Collate")] = 5000
-	sigma[consensus.NumOfPhase("ViewChange")] = 10000
+	sigma[consensus.NumOfPhase("Prepare")] = 50000
+	sigma[consensus.NumOfPhase("Vote")] = 50000
+	sigma[consensus.NumOfPhase("Collate")] = 50000
+	sigma[consensus.NumOfPhase("ViewChange")] = 100000
 
 	var timerArr			[4]*time.Timer
 	var cancelCh			[4]chan struct {}
@@ -252,7 +252,7 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
 						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	// When receive Prepare, save current time
-	//state.SetReceivePrepareTime(time.Now())
+	state.SetReceivePrepareTime(time.Now())
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -314,6 +314,8 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		state.GetTimerStopSendChannel() <- "Vote"
 		if node.Prepared[voteMsg.SequenceID] == 1 {
 			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
+			fmt.Println("[CMREQUESTTIME],",",",voteMsg.SequenceID,",", time.Since(time.Unix(0, state.GetReqMsg().Timestamp)))
+
 			node.MsgExecution <- state.GetPrepareMsg()
 		}
 		// Log last sequence id for checkpointing
@@ -344,6 +346,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
 	if node.Prepared[collateMsg.SequenceID] == 1 {
 		fmt.Println("[EXECUTECOMMIT]",",",collateMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
+		fmt.Println("[CMREQUESTTIME1],",",",collateMsg.SequenceID,",", time.Since(time.Unix(0, state.GetReqMsg().Timestamp)))		
 		node.MsgExecution <- state.GetPrepareMsg()
 	}
 	// Attach node ID to the message and broadcast collateMsg..
