@@ -262,9 +262,9 @@ func (server *Server) sendDummyMsg() {
 				server.node.updateView(server.node.StableCheckPoint)
 				server.node.updateEpochID(server.node.StableCheckPoint)
 				
-				go server.node.startTransitionWithDeadline(nil)
-				server.node.IsViewChanging = false
+
 				
+				fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx-1].GetReceiveViewchangeTime()))
 
 				if sequenceID % committee_num == 0 {
 					server.node.VCStates = make(map[int64]*consensus.VCState)
@@ -274,10 +274,13 @@ func (server *Server) sendDummyMsg() {
 				fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
 				primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
 
+				
 				atomic.AddInt64(&server.node.NextCandidateIdx, 1)
 
 
-
+				go server.node.startTransitionWithDeadline(nil)
+				server.node.IsViewChanging = false
+				
 				if primaryNode.NodeID != server.node.MyInfo.NodeID {
 					continue
 				}
@@ -290,7 +293,6 @@ func (server *Server) sendDummyMsg() {
 
 				// Broadcast the dummy message.
 				errCh := make(chan error, 1)
-				fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx-1].GetReceiveViewchangeTime()))
 				
 
 				log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d ", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
