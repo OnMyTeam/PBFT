@@ -83,7 +83,7 @@ const CoolingTime = time.Millisecond * 2
 const CoolingTotalErrMsg = 30
 
 // Number of outbound connection for a node.
-const MaxOutboundConnection = 10000
+const MaxOutboundConnection = 3000
 
 func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*NodeInfo,
 			viewID int64, decodePrivKey *ecdsa.PrivateKey) *Node {
@@ -267,9 +267,9 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	}
 
 	// Stop prepare phase and start vote phase if it is not committed
-	fmt.Println("[Lock-resolve Collate Lock Try]")
+	// fmt.Println("[Lock-resolve Collate Lock Try]")
 	node.CommittedMutex.Lock()
-	fmt.Println("[Lock-resolve Collate Lock Release]")
+	// fmt.Println("[Lock-resolve Collate Lock Release]")
 	if node.Committed[prepareMsg.SequenceID] == 1 {
 		node.CommittedMutex.Unlock()
 		// Stop prepare phase and execute the sequence if it is committed
@@ -318,7 +318,6 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 		seed = -1
 	}
 	//errCh := make(chan error, 1)
-	
 	if primaryNode.NodeID != node.MyInfo.NodeID {
 		return
 	}
@@ -329,7 +328,7 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
 		node.MyInfo.NodeID, sequenceID)
 
-	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
+	fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
 	node.Broadcast(prepareMsg, "/prepare")
 	fmt.Println("[StartPrepare] After Broadcast!")
 	//broadcast(errCh, node.MyInfo.Url, dummy, "/prepare", node.PrivKey)
@@ -362,7 +361,7 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 		//state.GetTimerStopSendChannel() <- "Vote"
 		node.PreparedMutex.Lock()
 		if node.Prepared[voteMsg.SequenceID] == 1 {
-			fmt.Println("[EXECUTECOMMIT] ",",",voteMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
+			// fmt.Println("[EXECUTECOMMIT] ","/",voteMsg.SequenceID,"/",time.Since(state.GetReceivePrepareTime()))
 			node.MsgExecution <- state.GetPrepareMsg()
 		}
 		atomic.AddInt64(&node.Committed[voteMsg.SequenceID], 1)
@@ -395,8 +394,8 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	// Log last sequence id for checkpointing
 	node.PreparedMutex.Lock()
 	if node.Prepared[collateMsg.SequenceID] == 1 {	
-		fmt.Println("[EXECUTECOMMIT]",",",collateMsg.SequenceID,",",time.Since(state.GetReceivePrepareTime()))
-		node.MsgExecution <- state.GetPrepareMsg()
+		// fmt.Println("[EXECUTECOMMIT]","/",collateMsg.SequenceID,"/",time.Since(state.GetReceivePrepareTime()))
+		// node.MsgExecution <- state.GetPrepareMsg()
 	}
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
 	node.PreparedMutex.Unlock()
@@ -461,9 +460,9 @@ func (node *Node) resolveMsg() {
 			state.GetMsgSendChannel() <- msg
 
 		case *consensus.VoteMsg:
-			fmt.Println("[Lock-resolve Collate Lock Try]")
+			// fmt.Println("[Lock-resolve Collate Lock Try]")
 			node.CommittedMutex.Lock()
-			fmt.Println("[Lock-resolve Collate Lock Release]")
+			// fmt.Println("[Lock-resolve Collate Lock Release]")
 			if node.Committed[msg.SequenceID] >= 1 {
 				node.CommittedMutex.Unlock()
 				continue
@@ -481,9 +480,9 @@ func (node *Node) resolveMsg() {
 			}
 			node.CommittedMutex.Unlock()
 		case *consensus.CollateMsg:
-			fmt.Println("[Lock-resolve Collate Lock Try]")
+			// fmt.Println("[Lock-resolve Collate Lock Try]")
 			node.CommittedMutex.Lock()
-			fmt.Println("[Lock-resolve Collate Lock Release]")
+			// fmt.Println("[Lock-resolve Collate Lock Release]")
 			if node.Committed[msg.SequenceID] >= 1 {
 				node.CommittedMutex.Unlock()
 			 	continue
@@ -524,7 +523,7 @@ func (node *Node) executeMsg() {
 		prepareMsg := <- node.MsgExecution
 		//node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
-		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,",",time.Now().UnixNano())
+		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
 		for {
 			var lastSequenceID int64
 			// Find the last committed message.
@@ -543,7 +542,7 @@ func (node *Node) executeMsg() {
 				//fmt.Println("[STAGE-DONE11] Commit SequenceID : ", int64(len(node.CommittedMsgs)))
 				break
 			}
-			fmt.Println("[Execute] sequeceID:", lastSequenceID + 1, time.Now().UnixNano())
+			fmt.Println("[Execute] /", lastSequenceID + 1,"/", time.Now().UnixNano())
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.
 			node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
