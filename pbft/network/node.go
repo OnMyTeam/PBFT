@@ -218,7 +218,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				}
 				cancelCh[phase] <- struct {}{}
 			case <-ExitCh:
-				fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
+				//fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
 				node.StatesMutex.Lock()
 				node.States[seqID] = nil
 				node.StatesMutex.Unlock()
@@ -251,11 +251,11 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
 	prepareMsg := ReqPrePareMsgs.PrepareMsg
 	requestMsg := ReqPrePareMsgs.RequestMsg
-	fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
-	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
-						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
+	//fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
+	//fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
+						//node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
 	// When receive Prepare, save current time
-	//state.SetReceivePrepareTime(time.Now())
+	state.SetReceivePrepareTime(time.Now())
 	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -555,8 +555,8 @@ func (node *Node) executeMsg() {
 				ch := node.States[node.StableCheckPoint].GetMsgExitSendChannel()
 				ch <- 0
 			} else {
-				fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
-				fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
+				//fmt.Println("[EXECUTE TIME] PREPARE : NULL Message came in!")
+				//fmt.Println("[EXECUTE TIME] REQUEST : NULL Message Came in!")
 			}
 
 			node.StatesMutex.Unlock()
