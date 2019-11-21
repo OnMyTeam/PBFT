@@ -78,7 +78,7 @@ type ViewChangeChannel struct {
 }
 
 // Deadline for the consensus state.
-const ConsensusDeadline = time.Millisecond * 380
+const ConsensusDeadline = time.Millisecond * 500
 
 // Cooling time to escape frequent error, or message sending retry.
 const CoolingTime = time.Millisecond * 2
@@ -548,9 +548,9 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 	state := node.States[sequenceID]
 	node.StatesMutex.RUnlock()
 
-	if state == nil {
-		return nil, fmt.Errorf("State for sequence number %d has not created yet.", sequenceID)
-	}
+	//if state == nil {
+	//	return nil, fmt.Errorf("State for sequence number %d has not created yet.", sequenceID)
+	//}
 
 	return state, nil
 }

@@ -16,7 +16,7 @@ import (
 	"time"
 	//"sync"
 )
-const sendPeriod time.Duration = 300
+const sendPeriod time.Duration = 350
 type Server struct {
 	url  string
 	node *Node
@@ -261,6 +261,7 @@ func (server *Server) sendDummyMsg() {
 				
 				server.node.StableCheckPoint = viewchangechannel.Min_S
 				sequenceID = server.node.StableCheckPoint+1
+
 				server.node.updateView(server.node.StableCheckPoint)
 				server.node.updateEpochID(server.node.StableCheckPoint)
 				
@@ -275,7 +276,7 @@ func (server *Server) sendDummyMsg() {
 				if sequenceID % committee_num == 0 {
 					server.node.VCStates = make(map[int64]*consensus.VCState)
 					server.node.NextCandidateIdx = committee_num
-					primaryNode = server.node.NodeTable[server.node.NextCandidateIdx]
+					//primaryNode = server.node.NodeTable[server.node.NextCandidateIdx]
 				}
 
 				go server.node.startTransitionWithDeadline(nil)
