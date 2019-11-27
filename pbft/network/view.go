@@ -184,7 +184,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
 	// Create a view state if it does not exist.
 	for vcs == nil {
-		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint)
+		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint, newviewMsg.SequenceID)
 		// Register state into node
 		node.VCStatesMutex.Lock()
 		node.VCStates[node.NextCandidateIdx] = vcs

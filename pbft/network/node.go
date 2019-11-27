@@ -173,8 +173,8 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 50000
-	sigma[consensus.NumOfPhase("Vote")] = 50000
+	sigma[consensus.NumOfPhase("Prepare")] = 500
+	sigma[consensus.NumOfPhase("Vote")] = 500
 	sigma[consensus.NumOfPhase("Collate")] = 50000
 	sigma[consensus.NumOfPhase("ViewChange")] = 100000
 
