@@ -294,7 +294,7 @@ func(node *Node) setNewSeedList(seedNo int) int {
 
 func (node *Node) getPrimaryInfoByID(sequenceID int64) *NodeInfo {
 	//sendingNum := int64(len(node.NodeTable)/2)
-	primary := node.NodeTable[(sequenceID-1)%10]
+	primary := node.NodeTable[(sequenceID-1) % int64(len(node.NodeTable))]
 	return primary
 }
 

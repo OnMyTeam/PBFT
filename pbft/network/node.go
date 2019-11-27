@@ -105,8 +105,8 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 		CommittedMsgs:   make(map[int64]*consensus.PrepareMsg),
 
 		// Channels
-		MsgEntrance: make(chan interface{}, len(nodeTable) * len(nodeTable)),
-		MsgDelivery: make(chan interface{}, len(nodeTable) * len(nodeTable)), // TODO: enough?
+		MsgEntrance: make(chan interface{}, len(nodeTable)),
+		MsgDelivery: make(chan interface{}, len(nodeTable)), // TODO: enough?
 		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable)),
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)),
 		MsgError: make(chan []error, len(nodeTable)),
@@ -117,11 +117,11 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 	node.updateView(viewID)
 
 	// Start message dispatcher
-	for i:=0; i < 25; i++ {
+	for i:=0; i < 19; i++ {
 		go node.dispatchMsg()
 	}
 
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 19; i++ {
 		// Start message resolver
 		go node.resolveMsg()
 	}
@@ -164,8 +164,8 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 50000
-	sigma[consensus.NumOfPhase("Vote")] = 50000
+	sigma[consensus.NumOfPhase("Prepare")] = 300
+	sigma[consensus.NumOfPhase("Vote")] = 200
 	sigma[consensus.NumOfPhase("Collate")] = 50000
 	sigma[consensus.NumOfPhase("ViewChange")] = 100000
 
@@ -173,7 +173,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	var cancelCh			[4]chan struct {}
 
 	MsgCh := state.GetMsgReceiveChannel()
-	TimerStartCh := state.GetTimerStartReceiveChannel()
+	// TimerStartCh := state.GetTimerStartReceiveChannel()
 	TimerStopCh := state.GetTimerStopReceiveChannel()
 	ExitCh := state.GetMsgExitReceiveChannel()
 	go func() {
@@ -188,7 +188,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				case *consensus.CollateMsg:
 					node.GetCollate(state, msg)
 				}
-			case phaseName := <-TimerStartCh:
+			case phaseName := <-state.GetTimerStartReceiveChannel():
 				phase:=consensus.NumOfPhase(phaseName)
 				timerArr[phase] = time.NewTimer(time.Millisecond*sigma[phase])
 				cancelCh[phase] = make(chan struct {})
@@ -196,26 +196,62 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				go func(phase int64, phaseName string) {
 					select {
 					case <-timerArr[phase].C: //when timer is done
-					switch phaseName{
-					case "Prepare":
-						reqPrepareMsg := &consensus.ReqPrePareMsgs{
-							RequestMsg: nil,
-							PrepareMsg: &consensus.PrepareMsg{
-								NodeID: node.MyInfo.NodeID,
-								SequenceID: seqID,
-								Seed: -1,
-							},
+						switch phaseName{
+							case "Prepare":
+								fmt.Println("Not Receive Preparemsg... BroadCast NULL VOTE")
+								// NULL Vote
+								voteMsg, _:= state.Prepare(nil, nil)
+								voteMsg.NodeID = node.MyInfo.NodeID
+								node.Broadcast(voteMsg, "/vote")
+							case "Vote":
+								fmt.Println("Vote finished....")
+								collateMsg, _ := state.VoteAQ(int32(len(node.NodeTable)))
+								collateMsg.NodeID = node.MyInfo.NodeID
+								
+
+								switch collateMsg.MsgType {
+								// Stop vote phase and start collate phase if it is not committed
+									case consensus.UNCOMMITTED:
+										//state.GetTimerStopSendChannel() <- "Vote"
+										//state.GetTimerStartSendChannel() <- "Collate"
+									// Stop vote phase and execute the sequence if it is committed
+									case consensus.COMMITTED:
+										//state.GetTimerStopSendChannel() <- "Vote"
+										node.CommittedMutex.Lock()
+										if node.Committed[collateMsg.SequenceID] == 0 {
+											fmt.Println("collateMsg ", collateMsg)
+											fmt.Println("VOTETIME FINISHED and EXECUTE")
+											fmt.Println("state.GetPrepareMsg() ", state.GetPrepareMsg())
+											node.MsgExecution <- state.GetPrepareMsg()
+
+											atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
+											node.Broadcast(collateMsg, "/collate")
+										} else {
+											fmt.Println("Already Commit and Execute SequenceID :", collateMsg.SequenceID)
+										}
+
+										node.CommittedMutex.Unlock()
+										// Log last sequence id for checkpointing
+
+								}								
 						}
-						node.GetPrepare(state, reqPrepareMsg)
-					}
 					case <-cancelCh[phase]: //when timer stop
 					}
 				}(phase, phaseName)
 			case phaseName := <-TimerStopCh:
 				phase := consensus.NumOfPhase(phaseName)
-				if timerArr[phase] != nil{
+				if timerArr[phase] != nil {
+					switch phaseName{
+						case "Prepare":
+							fmt.Println("Prepare Timer Stop....")
+
+						case "Vote":
+							fmt.Println("Vote Stop....")
+
+					}					
 					timerArr[phase].Stop()
 				}
+				
 				cancelCh[phase] <- struct {}{}
 			case <-ExitCh:
 				//fmt.Printf("[Terminate Thread] seqId %d finished!!!\n", state.GetSequenceID())
@@ -223,80 +259,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				node.States[seqID] = nil
 				node.StatesMutex.Unlock()
 				return
-				//case <-ctx.Done():
-				// //node.GetPrepare(state, nil)
-				// fmt.Println("Start ViewChange...")
-				// var lastCommittedMsg *consensus.PrepareMsg = nil
-				// msgTotalCnt := len(node.CommittedMsgs)
-				// if msgTotalCnt > 0 {
-				// 	lastCommittedMsg = node.CommittedMsgs[msgTotalCnt - 1]
-				// }
 
-				// if msgTotalCnt == 0 ||
-				// 	 lastCommittedMsg.SequenceID < state.GetSequenceID() {
-				// 	//startviewchange
-				// 	node.IsViewChanging = true
-				// 	// Broadcast view change message.
-				// 	node.MsgError <- []error{ctx.Err()}
-				// 	if state.GetSequenceID() == int64(1) {
-				// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
-				// 		node.StartViewChange()
-				// 	}
-				// }
-				//return
 			}
 		}
 	}()
-}
-func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
-	prepareMsg := ReqPrePareMsgs.PrepareMsg
-	requestMsg := ReqPrePareMsgs.RequestMsg
-	//fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
-	//fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
-						//node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
-	// When receive Prepare, save current time
-	state.SetReceivePrepareTime(time.Now())
-	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
-	if err != nil {
-		node.MsgError <- []error{err}
-	}
-
-	//Check VoteMsg created
-	if voteMsg.SequenceID == 0 {
-		return
-	}
-
-	// Stop prepare phase and start vote phase if it is not committed
-	// fmt.Println("[Lock-resolve Collate Lock Try]")
-	node.CommittedMutex.Lock()
-	// fmt.Println("[Lock-resolve Collate Lock Release]")
-	if node.Committed[prepareMsg.SequenceID] == 1 {
-		node.CommittedMutex.Unlock()
-		// Stop prepare phase and execute the sequence if it is committed
-		//state.GetTimerStopSendChannel() <- "Prepare"
-		node.MsgExecution <- prepareMsg
-	} else {
-		node.CommittedMutex.Unlock()
-		//state.GetTimerStopSendChannel() <- "Prepare"
-		//state.GetTimerStartSendChannel() <- "Vote"
-	}
-
-	node.BroadCastNextPrepareMsgIfPrimary(prepareMsg.SequenceID + 1)
-	// Log last sequence id for checkpointing
-	atomic.AddInt64(&node.Prepared[prepareMsg.SequenceID],1)
-
-
-	// Attach node ID to the message and broadcast voteMsg..
-	voteMsg.NodeID = node.MyInfo.NodeID
-	node.Broadcast(voteMsg, "/vote")
-
-	// Start next sequence thread if does not exists
-	node.StartThreadIfNotExists(prepareMsg.SequenceID + 1)
-
-	if prepareMsg.Seed != -1 {
-		//log.Println("Prepare for next Epoch",prepareMsg.Seed)
-		//node.setNewSeedList(prepareMsg.Seed)
-	}
 }
 func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 	var epoch int64 = 0
@@ -330,7 +296,6 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 
 	fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
 	node.Broadcast(prepareMsg, "/prepare")
-	fmt.Println("[StartPrepare] After Broadcast!")
 	//broadcast(errCh, node.MyInfo.Url, dummy, "/prepare", node.PrivKey)
 	// err := <-errCh
 	// if err != nil {
@@ -338,18 +303,70 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 	// }
 }
 
-func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
-	// fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from: ",voteMsg.NodeID, "seqId:", voteMsg.SequenceID, time.Now().UnixNano())
-	if voteMsg.SequenceID >= 1 && voteMsg.SequenceID <= 10 {
-		var PrepareMsg consensus.PrepareMsg
-		PrepareMsg.ViewID = 0
-		PrepareMsg.SequenceID = voteMsg.SequenceID
-		PrepareMsg.Digest = ""
-		PrepareMsg.EpochID = 0
-		PrepareMsg.NodeID = ""
-		PrepareMsg.Seed= 0
-		node.CommittedMsgs[voteMsg.SequenceID] = &PrepareMsg
+func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.ReqPrePareMsgs) {
+	prepareMsg := ReqPrePareMsgs.PrepareMsg
+	requestMsg := ReqPrePareMsgs.RequestMsg
+	//fmt.Println("[PrepareMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
+	fmt.Printf("[GetPrepare] to %s from %s sequenceID: %d\n", 
+						node.MyInfo.NodeID, prepareMsg.NodeID, prepareMsg.SequenceID)
+	// When receive Prepare, save current time
+	state.SetReceivePrepareTime(time.Now())
+	voteMsg, err := state.Prepare(prepareMsg, requestMsg)
+	if err != nil {
+		node.MsgError <- []error{err}
 	}
+
+	//Check VoteMsg created
+	if voteMsg.SequenceID == 0 {
+		return
+	}
+
+	// Stop prepare phase and start vote phase if it is not committed
+	// fmt.Println("[Lock-resolve Collate Lock Try]")
+	node.CommittedMutex.Lock()
+	// fmt.Println("[Lock-resolve Collate Lock Release]")
+	if node.Committed[prepareMsg.SequenceID] == 1 {
+		node.CommittedMutex.Unlock()
+		// Stop prepare phase and execute the sequence if it is committed
+		state.GetTimerStopSendChannel() <- "Prepare"
+		node.MsgExecution <- prepareMsg
+	} else {
+		node.CommittedMutex.Unlock()
+		state.GetTimerStopSendChannel() <- "Prepare"
+		state.GetTimerStartSendChannel() <- "Vote"
+	}
+
+	node.BroadCastNextPrepareMsgIfPrimary(prepareMsg.SequenceID + 1)
+	// Log last sequence id for checkpointing
+	atomic.AddInt64(&node.Prepared[prepareMsg.SequenceID],1)
+
+
+	// Attach node ID to the message and broadcast voteMsg..
+	voteMsg.NodeID = node.MyInfo.NodeID
+	node.Broadcast(voteMsg, "/vote")
+
+	// Start next sequence thread if does not exists
+	node.StartThreadIfNotExists(prepareMsg.SequenceID + 1)
+
+	if prepareMsg.Seed != -1 {
+		//log.Println("Prepare for next Epoch",prepareMsg.Seed)
+		//node.setNewSeedList(prepareMsg.Seed)
+	}
+}
+
+
+func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
+	fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from",voteMsg.NodeID, "SeqID:", voteMsg.SequenceID,"MsgType : ",voteMsg.MsgType,"/", time.Now().UnixNano())
+	// if voteMsg.SequenceID >= 1 && voteMsg.SequenceID <= 10 {
+	// 	var PrepareMsg consensus.PrepareMsg
+	// 	PrepareMsg.ViewID = 0
+	// 	PrepareMsg.SequenceID = voteMsg.SequenceID
+	// 	PrepareMsg.Digest = ""
+	// 	PrepareMsg.EpochID = 0
+	// 	PrepareMsg.NodeID = ""
+	// 	PrepareMsg.Seed= 0
+	// 	node.CommittedMsgs[voteMsg.SequenceID] = &PrepareMsg
+	// }
 	collateMsg, err := state.Vote(voteMsg)
 	if err != nil {
 		node.MsgError <- []error{err}
@@ -384,10 +401,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	node.Broadcast(collateMsg, "/collate")
 }
 func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.CollateMsg) {
-	// fmt.Printf("[GetCollate] to %s from %s sequenceID: %d TYPE : %d \n", 
-	// 				node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID, collateMsg.MsgType)
+	fmt.Printf("[GetCollate] to %s from %s sequenceID: %d TYPE : %d \n", 
+	 				node.MyInfo.NodeID, collateMsg.NodeID, collateMsg.SequenceID, collateMsg.MsgType)
 	newCollateMsg, err := state.Collate(collateMsg)
 
+	
 	if err != nil {
 		node.MsgError <- []error{err}
 	}
@@ -404,7 +422,7 @@ func (node *Node) GetCollate(state consensus.PBFT, collateMsg *consensus.Collate
 	node.PreparedMutex.Lock()
 	if node.Prepared[collateMsg.SequenceID] == 1 {	
 		// fmt.Println("[EXECUTECOMMIT]","/",collateMsg.SequenceID,"/",time.Since(state.GetReceivePrepareTime()))
-		// node.MsgExecution <- state.GetPrepareMsg()
+		node.MsgExecution <- state.GetPrepareMsg()
 	}
 	atomic.AddInt64(&node.Committed[collateMsg.SequenceID], 1)
 	node.PreparedMutex.Unlock()
@@ -439,7 +457,7 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 		node.StatesMutex.Unlock()
 		node.startTransitionWithDeadline(seqID, state)
 		//state.GetTimerStartSendChannel() <- "ViewChange"
-		//state.GetTimerStartSendChannel() <- "Prepare"
+		state.GetTimerStartSendChannel() <- "Prepare"
 	}else {
 		node.StatesMutex.Unlock()
 	}

@@ -50,6 +50,7 @@ type MsgLogs struct {
 	// primary node is also regarded as PREPARE message but
 	// do not count it, because it is not real PREPARE message.
 	TotalVoteMsg int32
+	TotalVoteOKMsg int32
 	TotalCollateMsg int32
 }
 
@@ -67,14 +68,15 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 			// Setting these counters during consensus is unsafe
 			// because quorum condition check can be skipped.
 			TotalVoteMsg:		0,
+			TotalVoteOKMsg:    0,			
 			TotalCollateMsg:    0,
 		},
 		SequenceID: seqID,
 
-		MsgState: make(chan interface{}, totNodes), // stack enough
-		MsgExit: make(chan int64, totNodes),
-		TimerStartCh: make(chan string, totNodes),
-		TimerStopCh: make(chan string, totNodes),
+		MsgState: make(chan interface{}, totNodes * 100), // stack enough
+		MsgExit: make(chan int64, totNodes * 100),
+		TimerStartCh: make(chan string, totNodes * 100),
+		TimerStopCh: make(chan string, totNodes * 100),
 
 		F: (totNodes-1) / 3,
 		B: 0,
@@ -89,7 +91,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 	if requestMsg == nil {
 		voteMsg = VoteMsg{
 			ViewID: state.ViewID,
-			Digest: state.MsgLogs.Digest,
+			Digest: "NULL",
 			PrepareMsg: prepareMsg,
 			NodeID: "",
 			SequenceID: state.SequenceID, 	//This sequence number is already known..
@@ -128,6 +130,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 }
 func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	var collateMsg CollateMsg
+	var newTotalVoteOKMsg int32
 	// case1: Making UNCOMMITTED Msg
 	if voteMsg == nil {
 		collateMsg = CollateMsg{
@@ -156,16 +159,19 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	}
 	state.MsgLogs.VoteMsgs[voteMsg.NodeID] = voteMsg
 	state.MsgLogs.VoteMsgsMutex.Unlock()
-	newTotalVoteMsg := atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
-
+	atomic.AddInt32(&state.MsgLogs.TotalVoteMsg, 1)
+	if voteMsg.MsgType == VOTE {
+		newTotalVoteOKMsg = atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
+		
+	}
+	
 	// Verify Message
 	if err := state.verifyMsg(voteMsg.ViewID, voteMsg.SequenceID, voteMsg.Digest); err != nil {
 		state.SetBizantine(voteMsg.NodeID)
 		return collateMsg, errors.New("vote message is corrupted: " + err.Error() + " (nodeID: " + voteMsg.NodeID + ")")
 	}
-
 	// If Committed, make CollateMsg
-	if int(newTotalVoteMsg) == 2*state.F + 1 {
+	if int(newTotalVoteOKMsg) == 2*state.F + 1 {
 	   	collateMsg := CollateMsg{
 	   		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 	   		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
@@ -177,6 +183,33 @@ func (state *State) Vote(voteMsg *VoteMsg) (CollateMsg, error){
 	   		MsgType:	COMMITTED,
 	   	}
 		return collateMsg, nil
+	}
+
+	return collateMsg, nil
+}
+func (state *State) VoteAQ(TotalNode int32) (CollateMsg, error){
+
+	newTotalVoteOKMsg := state.MsgLogs.TotalVoteOKMsg
+	newTotalVoteMsg := state.MsgLogs.TotalVoteMsg
+	// byzantine length
+	byzantine := TotalNode - newTotalVoteMsg
+	fmt.Println("TotalNode :",TotalNode, "newTotalVoteMsg :",newTotalVoteMsg, "byzantine length :", byzantine, "state.SequenceID :", state.SequenceID)
+	collateMsg := CollateMsg{
+		//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+		ViewID:		state.ViewID,
+		Digest:		state.MsgLogs.Digest,
+		NodeID:		"",
+		SequenceID:	state.SequenceID,
+		MsgType:	0,
+	}	
+	// If Committed, make CollateMsg
+	if int(newTotalVoteOKMsg) >= (2*state.F - int(byzantine) + 1) && (2*state.F - int(byzantine) + 1) >= 1{
+		collateMsg.MsgType = COMMITTED
+
+	}else {
+		collateMsg.MsgType = UNCOMMITTED	
 	}
 
 	return collateMsg, nil
@@ -212,7 +245,7 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
 		}
 	// If Committed, make CollateMsg
-		if int(state.MsgLogs.TotalVoteMsg) == 2*state.F - state.B + 1 {
+		if int(state.MsgLogs.TotalVoteMsg) >= 2*state.F + 1 {
 			return CollateMsg{
 				//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 				ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
