@@ -28,7 +28,10 @@ const (
 	//maxMessageSize = 209715200000
 )
 
-var upgrader = websocket.Upgrader{}
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024*100,
+	WriteBufferSize: 1024*100,
+}
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {

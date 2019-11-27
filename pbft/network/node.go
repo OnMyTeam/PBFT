@@ -114,8 +114,8 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 		CommittedMsgs:   make(map[int64]*consensus.PrepareMsg),
 
 		// Channels
-		MsgEntrance: make(chan interface{}, len(nodeTable) * len(nodeTable)),
-		MsgDelivery: make(chan interface{}, len(nodeTable) * len(nodeTable)), // TODO: enough?
+		MsgEntrance: make(chan interface{}, len(nodeTable)),
+		MsgDelivery: make(chan interface{}, len(nodeTable)), // TODO: enough?
 		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable)),
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)),
 		MsgError: make(chan []error, len(nodeTable)),
@@ -126,11 +126,11 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 	node.updateViewID(viewID)
 
 	// Start message dispatcher
-	for i:=0; i < 25; i++ {
+	for i:=0; i < 19; i++ {
 		go node.dispatchMsg()
 	}
 
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 19; i++ {
 		// Start message resolver
 		go node.resolveMsg()
 	}
