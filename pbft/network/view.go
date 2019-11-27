@@ -35,7 +35,6 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 
 	// Ignore VIEW-CHANGE message if the next view id is not new.
 	
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	vcs = node.VCStates[viewchangeMsg.SequenceID]
 	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
 	// Create a view state if it does not exist.
@@ -180,19 +179,19 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 	node.NextCandidateIdx = newviewMsg.NextCandidateIdx
 
 	var vcs *consensus.VCState
-	vcs = node.VCStates[node.NextCandidateIdx]
+	vcs = node.VCStates[newviewMsg.SequenceID]
 	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
 	// Create a view state if it does not exist.
 	for vcs == nil {
 		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint, newviewMsg.SequenceID)
 		// Register state into node
 		node.VCStatesMutex.Lock()
-		node.VCStates[node.NextCandidateIdx] = vcs
+		node.VCStates[newviewMsg.SequenceID] = vcs
 		node.VCStatesMutex.Unlock()
 
 		// Assign new VCState if node did not create the state.
-		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(node.VCStates[node.NextCandidateIdx])), unsafe.Pointer(nil), unsafe.Pointer(vcs)) {
-			vcs = node.VCStates[node.NextCandidateIdx]
+		if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(node.VCStates[newviewMsg.SequenceID])), unsafe.Pointer(nil), unsafe.Pointer(vcs)) {
+			vcs = node.VCStates[newviewMsg.SequenceID]
 		}
 	}
 	
@@ -203,7 +202,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 	// Register new-view message into this node
 	node.VCStatesMutex.Lock()
-	node.VCStates[node.NextCandidateIdx].NewViewMsg = newviewMsg
+	node.VCStates[newviewMsg.SequenceID].NewViewMsg = newviewMsg
 	node.VCStatesMutex.Unlock()
 
 	// Fill missing states and messages

@@ -307,12 +307,12 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 	if node.Committed[prepareMsg.SequenceID] == 1 {
 		node.CommittedMutex.Unlock()
 		// Stop prepare phase and execute the sequence if it is committed
-		//state.GetTimerStopSendChannel() <- "Prepare"
+		state.GetTimerStopSendChannel() <- "Prepare"
 		node.MsgExecution <- prepareMsg
 	} else {
 		node.CommittedMutex.Unlock()
-		//state.GetTimerStopSendChannel() <- "Prepare"
-		//state.GetTimerStartSendChannel() <- "Vote"
+		state.GetTimerStopSendChannel() <- "Prepare"
+		state.GetTimerStartSendChannel() <- "Vote"
 	}
 
 	node.BroadCastNextPrepareMsgIfPrimary(prepareMsg.SequenceID + 1)
@@ -371,8 +371,8 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 		node.View.ID,int64(sequenceID),
 		node.MyInfo.NodeID, int(seed), node.EpochID)
 
-	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-		node.MyInfo.NodeID, sequenceID)
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d, epochId: %d, viewId: %d",
+		node.MyInfo.NodeID, sequenceID, node.EpochID, node.View.ID)
 
 	fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
 	node.Broadcast(prepareMsg, "/prepare")
@@ -400,11 +400,11 @@ func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	switch collateMsg.MsgType {
 	// Stop vote phase and start collate phase if it is not committed
 	case consensus.UNCOMMITTED:
-		//state.GetTimerStopSendChannel() <- "Vote"
+		state.GetTimerStopSendChannel() <- "Vote"
 		//state.GetTimerStartSendChannel() <- "Collate"
 	// Stop vote phase and execute the sequence if it is committed
 	case consensus.COMMITTED:
-		//state.GetTimerStopSendChannel() <- "Vote"
+		state.GetTimerStopSendChannel() <- "Vote"
 		node.PreparedMutex.Lock()
 		if node.Prepared[voteMsg.SequenceID] == 1 {
 			// fmt.Println("[EXECUTECOMMIT] ","/",voteMsg.SequenceID,"/",time.Since(state.GetReceivePrepareTime()))

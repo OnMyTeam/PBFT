@@ -71,10 +71,10 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		},
 		SequenceID: seqID,
 
-		MsgState: make(chan interface{}, totNodes), // stack enough
-		MsgExit: make(chan int64, totNodes),
-		TimerStartCh: make(chan string, totNodes),
-		TimerStopCh: make(chan string, totNodes),
+		MsgState: make(chan interface{}, totNodes*100), // stack enough
+		MsgExit: make(chan int64, totNodes*100),
+		TimerStartCh: make(chan string, totNodes*100),
+		TimerStopCh: make(chan string, totNodes*100),
 
 		F: (totNodes-1) / 3,
 		B: 0,

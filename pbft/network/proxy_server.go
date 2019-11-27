@@ -124,7 +124,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 			fmt.Println("[receiveLoop-error] decoding error")
 		}
 		/////////////////////////////////////////////////////////////////////////////////////////////
-		time.Sleep(time.Millisecond * 500)		
+		time.Sleep(time.Millisecond * 100)		
 		switch rawMsg.MsgType {
 		case "/prepare":
 			// ReqPrePareMsgs have RequestMsg and PrepareMsg
@@ -194,8 +194,8 @@ func (server *Server) sendGenesisMsgIfPrimary() {
 		server.node.View.ID,int64(sequenceID),
 		server.node.MyInfo.NodeID, int(seed), server.node.EpochID)
 
-	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-		server.node.MyInfo.NodeID, sequenceID)
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d, epochId: %d, viewId: %d",
+		server.node.MyInfo.NodeID, sequenceID, server.node.EpochID, server.node.View.ID)
 
 	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
 	server.node.Broadcast(prepareMsg, "/prepare")
