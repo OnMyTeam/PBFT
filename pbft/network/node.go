@@ -19,7 +19,8 @@ type Node struct {
 	NodeTable       []*NodeInfo
 	SeedNodeTables	[20][]*NodeInfo
 	View            *View
-
+	EpochID			int64
+	
 	States          map[int64]consensus.PBFT // key: sequenceID, value: state
 	VCStates		map[int64]*consensus.VCState
 	CommittedMsgs   map[int64]*consensus.PrepareMsg // kinda block.
@@ -30,6 +31,7 @@ type Node struct {
 	//ViewChangeState *consensus.ViewChangeState
 	TotalConsensus  int64 // atomic. number of consensus started so far.
 	IsViewChanging  bool
+	NextCandidateIdx int64
 
 	// Channels
 	MsgEntrance   chan interface{}
@@ -39,6 +41,7 @@ type Node struct {
 	MsgOutbound   chan *MsgOut
 	MsgError      chan []error
 	ViewMsgEntrance chan interface{}
+	ViewChangeChan chan ViewChangeChannel
 
 	// Mutexes for preventing from concurrent access
 	StatesMutex sync.RWMutex
@@ -73,6 +76,11 @@ type MsgOut struct {
 	Path string
 }
 
+type ViewChangeChannel struct {
+	Min_S  int64 `json:"min_s"`
+	VCSCheck    bool `json:"vcscheck"`
+}
+
 // Deadline for the consensus state.
 // const ConsensusDeadline = time.Millisecond * 5000
 
@@ -93,8 +101,9 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 		NodeTable: nodeTable,
 		SeedNodeTables: seedNodeTables,
 		View:      &View{},
+		EpochID:	0,
 		IsViewChanging: false,
-
+		NextCandidateIdx: 10,
 		// Consensus-related struct
 		States:          make(map[int64]consensus.PBFT),
 		VCStates: 		 make(map[int64]*consensus.VCState),
@@ -114,7 +123,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 	}
 
 	atomic.StoreInt64(&node.TotalConsensus, 0)
-	node.updateView(viewID)
+	node.updateViewID(viewID)
 
 	// Start message dispatcher
 	for i:=0; i < 19; i++ {
@@ -257,10 +266,26 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 										node.CommittedMutex.Unlock()
 										// Log last sequence id for checkpointing
 
+								}	
+							
+							case "Viewchange":
+								fmt.Println("Start ViewChange...")
+								var lastCommittedMsg *consensus.PrepareMsg = nil
+								msgTotalCnt := len(node.CommittedMsgs)
+								if msgTotalCnt > 0 {
+									lastCommittedMsg = node.CommittedMsgs[int64(msgTotalCnt - 1)]
 								}
-							// case "Total":
-							// 	ch := node.States[seqID].GetMsgExitSendChannel()
-							// 	ch <- 0
+
+								if msgTotalCnt == 0 ||
+									lastCommittedMsg.SequenceID < state.GetSequenceID() {
+									//startviewchange
+									node.IsViewChanging = true
+									// Broadcast view change message.
+									//node.MsgError <- []error{ctx.Err()}
+									fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
+									node.StartViewChange(state.GetSequenceID())
+								}										
+
 						}
 					case <-cancelCh[phase]: //when timer stop
 					}
@@ -286,13 +311,38 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				node.States[seqID] = nil
 				node.StatesMutex.Unlock()
 				return
-
 			}
+		// case <-ch2:
+		// 	return
+		// case <-ctx.Done(): 
+		// 	//node.GetPrepare(state, nil)
+		
+		// 	var lastCommittedMsg *consensus.PrepareMsg = nil
+		// 	msgTotalCnt := int64(len(node.CommittedMsgs))
+		// 	if msgTotalCnt > 0 {
+		// 		lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
+		// 	}
+		
+		// 	if msgTotalCnt == 0 ||
+		// 		lastCommittedMsg.SequenceID < state.GetSequenceID() {
+				
+		// 		fmt.Println("Start ViewChange...")	
+				
+		// 		//startviewchange
+		// 		node.IsViewChanging = true
+
+		// 		// Broadcast view change message.
+		// 		node.MsgError <- []error{ctx.Err()}
+		// 		fmt.Printf("&&&&&&&&&&&&&&&&&&& state.GetSequenceID %d &&&&&&&&&&&&&&&&&&\n",state.GetSequenceID())
+				
+		// 		node.StartViewChange()
+		// 	}
+		// 	return
 		}
 	}()
 }
 func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
-	var epoch int64 = 0
+	//var epoch int64 = 0
 	var seed int64 = -1
 
 	data := make([]byte, 1 << 20)
@@ -301,29 +351,40 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 	}
 	data[len(data)-1]=0
 
-	primaryNode := node.getPrimaryInfoByID(sequenceID)
 
-	if sequenceID % 10 == 1 && sequenceID != 1{
-		epoch += 1
-		seed = epoch % 19+1
-		//server.node.setNewSeedList(int(seed))
-	} else {
-		seed = -1
+	node.updateViewID(sequenceID-1)
+	if (sequenceID-1) % 10 == 0 {
+		node.updateEpochID(sequenceID-1)		
+		//node.NextCandidateIdx = 11
 	}
+	primaryNode := node.getPrimaryInfoByID(node.View.ID)
+
+	fmt.Printf("server.node.MyInfo.NodeID: %s\n", node.MyInfo.NodeID)
+	fmt.Printf("primaryNode.NodeID: %s\n", primaryNode.NodeID)
+
+	// if sequenceID % 10 == 1 && sequenceID != 1{
+	// 	epoch += 1
+	// 	seed = epoch % 19+1
+	// 	//server.node.setNewSeedList(int(seed))
+	// } else {
+	// 	seed = -1
+	// }
 	//errCh := make(chan error, 1)
 	if primaryNode.NodeID != node.MyInfo.NodeID {
 		return
 	}
+
 	prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
 		node.View.ID,int64(sequenceID),
-		node.MyInfo.NodeID, int(seed))
+		node.MyInfo.NodeID, int(seed), node.EpochID)
 
-	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-		node.MyInfo.NodeID, sequenceID)
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d, epochId: %d, viewId: %d",
+		node.MyInfo.NodeID, sequenceID, node.EpochID, node.View.ID)
 
 	fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
 	time.Sleep(time.Millisecond * 40)
 	node.Broadcast(prepareMsg, "/prepare")
+	fmt.Println("[StartPrepare] After Broadcast!")
 	//broadcast(errCh, node.MyInfo.Url, dummy, "/prepare", node.PrivKey)
 	// err := <-errCh
 	// if err != nil {
@@ -381,7 +442,6 @@ func (node *Node) GetPrepare(state consensus.PBFT, ReqPrePareMsgs *consensus.Req
 
 
 }
-
 
 func (node *Node) GetVote(state consensus.PBFT, voteMsg *consensus.VoteMsg) {
 	fmt.Println("[GetVote] to",node.MyInfo.NodeID, "from",voteMsg.NodeID, "SeqID:", voteMsg.SequenceID,"MsgType : ",voteMsg.MsgType,"/", time.Now().UnixNano())
@@ -489,6 +549,8 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 		node.States[seqID] = node.createState(seqID)
 		state = node.States[seqID]
 		node.StatesMutex.Unlock()
+		newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
+		fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)	
 		node.startTransitionWithDeadline(seqID, state)
 		//state.GetTimerStartSendChannel() <- "ViewChange"
 		state.GetTimerStartSendChannel() <- "Prepare"
@@ -630,23 +692,20 @@ func (node *Node) executeMsg() {
 			node.StatesMutex.Unlock()
 			// TODO: execute appropriate operation.
 
-
-			/*
-			nCheckPoint := node.CheckPointSendPoint + periodCheckPoint
-			msgTotalCnt1 := len(node.CommittedMsgs)
-
-			if node.CommittedMsgs[msgTotalCnt1 - 1].SequenceID ==  nCheckPoint{
-				node.CheckPointSendPoint = nCheckPoint
-
-				SequenceID := node.CommittedMsgs[len(node.CommittedMsgs) - 1].SequenceID
-				checkPointMsg, _ := node.getCheckPointMsg(SequenceID, node.MyInfo.NodeID, node.CommittedMsgs[msgTotalCnt1 - 1])
-				LogStage("CHECKPOINT", false)
-				node.Broadcast(checkPointMsg, "/checkpoint")
-				node.CheckPoint(checkPointMsg)
-			}*/
-
 			delete(pairs, lastSequenceID + 1)
-			
+			// fmt.Println("[Execute] sequenceID:",lastSequenceID + 1,",",time.Now().UnixNano())
+			// // Add the committed message in a private log queue
+			// // to print the orderly executed messages.
+			// node.CommittedMsgs[int64(lastSequenceID + 1)] = prepareMsg
+			// LogStage("Commit", true)
+
+			node.StableCheckPoint = lastSequenceID + 1
+			node.updateViewID(node.StableCheckPoint)
+			node.updateEpochID(node.StableCheckPoint)
+			if node.View.ID % 10 == 0 {
+				node.VCStates = make(map[int64]*consensus.VCState)
+				node.NextCandidateIdx = 10
+			}
 		}
 
 		// Print all committed messages.
@@ -707,9 +766,9 @@ func (node *Node) getState(sequenceID int64) (consensus.PBFT, error) {
 	state := node.States[sequenceID]
 	node.StatesMutex.RUnlock()
 
-	if state == nil {
-		return nil, fmt.Errorf("State for sequence number %d has not created yet.", sequenceID)
-	}
+	// if state == nil {
+	// 	return nil, fmt.Errorf("State for sequence number %d has not created yet.", sequenceID)
+	// }
 
 	return state, nil
 }

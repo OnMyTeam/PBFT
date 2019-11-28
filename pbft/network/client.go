@@ -29,7 +29,6 @@ const (
 )
 
 var upgrader = websocket.Upgrader{
-
 	ReadBufferSize:  1024*100,
 	WriteBufferSize: 1024*100,
 }

@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"net/url"
 	//"fmt"
+	//"sync/atomic"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
 	"log"
 	"time"
 	//"sync"
 )
+const sendPeriod time.Duration = 350
 type Server struct {
 	url  string
 	node *Node
@@ -176,23 +178,125 @@ func (server *Server) sendGenesisMsgIfPrimary() {
 	}
 	data[len(data)-1]=0
 
-	primaryNode := server.node.getPrimaryInfoByID(sequenceID)
+	server.node.updateViewID(sequenceID-1)
+	server.node.updateEpochID(sequenceID-1)
+	primaryNode := server.node.getPrimaryInfoByID(server.node.View.ID)
+
+	fmt.Printf("server.node.MyInfo.NodeID: %s\n", server.node.MyInfo.NodeID)
+	fmt.Printf("primaryNode.NodeID: %s\n", primaryNode.NodeID)
 		
 	if primaryNode.NodeID != server.node.MyInfo.NodeID {
 		return
 	}
+	
 	prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
 		server.node.View.ID,int64(sequenceID),
-		server.node.MyInfo.NodeID, int(seed))
+		server.node.MyInfo.NodeID, int(seed), server.node.EpochID)
 
-	log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-		server.node.MyInfo.NodeID, sequenceID)
+	log.Printf("Broadcasting dummy message from %s, sequenceId: %d, epochId: %d, viewId: %d",
+		server.node.MyInfo.NodeID, sequenceID, server.node.EpochID, server.node.View.ID)
 
 	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
 	server.node.Broadcast(prepareMsg, "/prepare")
 	// dummy := dummyMsg("Op1", "Client1", data, 
 	// 	server.node.View.ID,int64(sequenceID),
 	// 	server.node.MyInfo.NodeID, seed)
+	// //currentView := server.node.View.ID
+
+	// sequenceID := int64(0)
+	// committee_num := int64(10)
+
+	// for  {
+	// 	select {
+	// 	case <-ticker.C:
+	// 		if server.node.IsViewChanging {
+	// 			continue
+	// 		}
+
+	// 		sequenceID++
+
+	// 		server.node.updateView(sequenceID-1)
+	// 		server.node.updateEpochID(sequenceID-1)
+	// 		primaryNode := server.node.getPrimaryInfoByID(server.node.View.ID)
+			
+			
+
+	// 		fmt.Printf("server.node.MyInfo.NodeID: %s\n", server.node.MyInfo.NodeID)
+	// 		fmt.Printf("primaryNode.NodeID: %s\n", primaryNode.NodeID)
+			
+			
+	// 		if primaryNode.NodeID != server.node.MyInfo.NodeID {
+	// 			continue
+	// 		}
+
+	// 		log.Printf("server.node.View.ID: %d", server.node.View.ID)
+	// 		dummy := dummyMsg("Op1", "Client1", data, 
+	// 			server.node.View.ID,int64(sequenceID),
+	// 			server.node.MyInfo.NodeID, server.node.EpochID)	
+
+	// 		// Broadcast the dummy message.
+	// 		errCh := make(chan error, 1)
+	// 		log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
+	// 		fmt.Println("[StartPrepare] sequenceId:", sequenceID, time.Now().UnixNano())
+	// 		broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
+			
+
+
+	// 		err := <-errCh
+	// 		if err != nil {
+	// 			log.Println(err)
+	// 		}
+	// 	case viewchangechannel := <- server.node.ViewChangeChan:
+			
+		
+	// 		if  viewchangechannel.VCSCheck {
+				
+	// 			server.node.StableCheckPoint = viewchangechannel.Min_S
+	// 			sequenceID = server.node.StableCheckPoint+1
+
+	// 			server.node.updateView(server.node.StableCheckPoint)
+	// 			server.node.updateEpochID(server.node.StableCheckPoint)
+				
+	// 			fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
+	// 			primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
+
+				
+	// 			fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx].GetReceiveViewchangeTime()))
+
+	// 			atomic.AddInt64(&server.node.NextCandidateIdx, 1)
+
+	// 			if sequenceID % committee_num == 0 {
+	// 				server.node.VCStates = make(map[int64]*consensus.VCState)
+	// 				server.node.NextCandidateIdx = committee_num
+	// 				//primaryNode = server.node.NodeTable[server.node.NextCandidateIdx]
+	// 			}
+
+	// 			go server.node.startTransitionWithDeadline(nil)
+	// 			server.node.IsViewChanging = false
+
+	// 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
+	// 				continue
+	// 			}
+
+	// 			//log.Printf("--------------------------------view-change--------------------------------\n")
+	// 			dummy := dummyMsg("Op1", "Client1", data, 
+	// 				server.node.View.ID,int64(sequenceID),
+	// 				server.node.MyInfo.NodeID, server.node.EpochID)
+				
+
+	// 			// Broadcast the dummy message.
+	// 			errCh := make(chan error, 1)
+				
+
+	// 			log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d ", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
+	// 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
+			
+	// 			err := <-errCh
+	// 			if err != nil {
+	// 				log.Println(err)
+	// 			}
+	// 		}
+	// 	}
 
 	// errCh := make(chan error, 1)
 	
@@ -251,7 +355,7 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.Signatu
 	return sigMgs, nil, ok
 }
 func PrepareMsgMaking(operation string, clientID string, data []byte, 
-	viewID int64, sID int64, nodeID string, Seed int) *consensus.ReqPrePareMsgs {
+	viewID int64, sID int64, nodeID string, Seed int, epochID int64) *consensus.ReqPrePareMsgs {
 	var RequestMsg consensus.RequestMsg
 	RequestMsg.Timestamp = time.Now().UnixNano()
 	RequestMsg.Operation = operation
@@ -269,7 +373,7 @@ func PrepareMsgMaking(operation string, clientID string, data []byte,
 	PrepareMsg.ViewID = viewID
 	PrepareMsg.SequenceID = sID
 	PrepareMsg.Digest = digest
-	PrepareMsg.EpochID = 0
+	PrepareMsg.EpochID = epochID
 	PrepareMsg.NodeID = nodeID
 	PrepareMsg.Seed= Seed
 
