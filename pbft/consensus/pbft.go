@@ -23,6 +23,8 @@ type PBFT interface {
 	GetMsgSendChannel() chan<- interface{}
 	GetMsgExitReceiveChannel() <-chan int64
 	GetMsgExitSendChannel() chan<- int64
+	GetMsgExitReceiveChannel1() <-chan int64
+	GetMsgExitSendChannel1() chan<- int64	
 	GetTimerStartReceiveChannel() <-chan string
 	GetTimerStartSendChannel() chan<- string
 	GetTimerStopReceiveChannel() <-chan string
@@ -32,7 +34,7 @@ type PBFT interface {
 	GetPrepareMsg() *PrepareMsg
 	GetVoteMsgs() map[string]*VoteMsg
 	GetCollateMsgs() map[string]*CollateMsg
-
+	GetSentVoteMsgs() *VoteMsg
 	//SetSuccChkPoint(int64)
 	SetSequenceID(sequenceID int64)
 	SetDigest(digest string)

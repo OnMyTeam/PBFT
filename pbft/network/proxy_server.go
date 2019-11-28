@@ -121,7 +121,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 		if ok == false {
 			fmt.Println("[receiveLoop-error] decoding error")
 		}
-		time.Sleep(time.Millisecond * 100)		
+		time.Sleep(time.Millisecond * 80)
 		switch rawMsg.MsgType {
 		case "/prepare":
 			// ReqPrePareMsgs have RequestMsg and PrepareMsg
