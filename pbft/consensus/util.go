@@ -57,6 +57,8 @@ func NumOfPhase(s string) int64 {
 		return 2
 	case "ViewChange":
 		return 3
-	}
+	case "Total":
+		return 4
+	}	
 	return -1
 }

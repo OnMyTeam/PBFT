@@ -16,6 +16,7 @@ type State struct {
 
 	MsgState 	chan interface{}
 	MsgExit		chan int64
+	MsgExit1	chan int64
 	TimerStartCh	chan string
 	TimerStopCh		chan string
 
@@ -73,7 +74,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 		},
 		SequenceID: seqID,
 
-		MsgState: make(chan interface{}, totNodes * 100), // stack enough
+		MsgState: make(chan interface{}, totNodes * 200), // stack enough
 		MsgExit: make(chan int64, totNodes * 100),
 		TimerStartCh: make(chan string, totNodes * 100),
 		TimerStopCh: make(chan string, totNodes * 100),
@@ -97,6 +98,7 @@ func (state *State) Prepare(prepareMsg *PrepareMsg, requestMsg *RequestMsg) (Vot
 			SequenceID: state.SequenceID, 	//This sequence number is already known..
 			MsgType: NULLMSG,
 		}
+		state.MsgLogs.SentVoteMsg = &voteMsg
 		return voteMsg, nil
 	}
 
@@ -216,7 +218,6 @@ func (state *State) VoteAQ(TotalNode int32) (CollateMsg, error){
 }
 func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	var newcollateMsg CollateMsg
-
 	// Append msg to its logs
 	state.MsgLogs.CollateMsgsMutex.Lock()
 	if _, ok := state.MsgLogs.CollateMsgs[collateMsg.NodeID]; ok {
@@ -239,13 +240,16 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	switch collateMsg.MsgType {
 	case COMMITTED:
 		for NodeID, VoteMsg := range state.GetVoteMsgs() {
-			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] {
+			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] || collateMsg.ReceivedVoteMsg[NodeID] == nil {
 				continue
 			}
 			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
+			if collateMsg.ReceivedVoteMsg[NodeID].MsgType == VOTE {
+				atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
+			}
 		}
 	// If Committed, make CollateMsg
-		if int(state.MsgLogs.TotalVoteMsg) >= 2*state.F + 1 {
+		if int(state.MsgLogs.TotalVoteOKMsg) >= 2*state.F + 1 {
 			return CollateMsg{
 				//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
 				ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
@@ -296,6 +300,12 @@ func (state *State) GetMsgExitReceiveChannel() <-chan int64 {
 func (state *State) GetMsgExitSendChannel() chan<- int64 {
 	return state.MsgExit
 }
+func (state *State) GetMsgExitReceiveChannel1() <-chan int64 {
+	return state.MsgExit1
+}
+func (state *State) GetMsgExitSendChannel1() chan<- int64 {
+	return state.MsgExit1
+}
 func (state *State) GetTimerStartReceiveChannel() <-chan string {
 	return state.TimerStartCh
 }
@@ -339,6 +349,9 @@ func (state *State) GetCollateMsgs() map[string]*CollateMsg {
 	state.MsgLogs.CollateMsgsMutex.RUnlock()
 
 	return newMap
+}
+func (state *State) GetSentVoteMsgs() *VoteMsg {
+	return state.MsgLogs.SentVoteMsg
 }
 func (state *State) FillHoleVoteMsgs(collateMsg *CollateMsg) {
 
