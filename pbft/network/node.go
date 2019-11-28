@@ -173,10 +173,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 	// regardless of the current stage for the state.
 
 	var sigma	[4]time.Duration
-	sigma[consensus.NumOfPhase("Prepare")] = 300
-	sigma[consensus.NumOfPhase("Vote")] = 200
+	sigma[consensus.NumOfPhase("Prepare")] = 700
+	sigma[consensus.NumOfPhase("Vote")] = 600
 	sigma[consensus.NumOfPhase("Collate")] = 50000
-	sigma[consensus.NumOfPhase("ViewChange")] = 100000
+	sigma[consensus.NumOfPhase("ViewChange")] = 80000
 
 	var timerArr			[4]*time.Timer
 	var cancelCh			[4]chan struct {}
@@ -196,6 +196,10 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 					node.GetVote(state, msg)
 				case *consensus.CollateMsg:
 					node.GetCollate(state, msg)
+				case *consensus.ViewChangeMsg:
+					node.GetViewChange(msg)
+				case *consensus.NewViewMsg:
+					node.GetNewView(msg)
 				}
 			case phaseName := <-state.GetTimerStartReceiveChannel():
 				phase:=consensus.NumOfPhase(phaseName)
@@ -244,7 +248,7 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 
 								}	
 							
-							case "Viewchange":
+							case "ViewChange":
 								fmt.Println("Start ViewChange...")
 								var lastCommittedMsg *consensus.PrepareMsg = nil
 								msgTotalCnt := len(node.CommittedMsgs)
@@ -275,6 +279,9 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 
 						case "Vote":
 							fmt.Println("Vote Stop....")
+						
+						case "ViewChange":
+							fmt.Println("ViewChange Stop...")
 
 					}					
 					timerArr[phase].Stop()
@@ -286,8 +293,6 @@ func (node *Node) startTransitionWithDeadline(seqID int64, state consensus.PBFT)
 				// node.StatesMutex.Lock()
 				// node.States[seqID] = nil
 				// node.StatesMutex.Unlock()
-				// return
-				
 				return
 			}
 		// case <-ch2:
@@ -360,6 +365,7 @@ func (node *Node) BroadCastNextPrepareMsgIfPrimary(sequenceID int64){
 		node.MyInfo.NodeID, sequenceID, node.EpochID, node.View.ID)
 
 	fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
+	time.Sleep(time.Millisecond * 300)
 	node.Broadcast(prepareMsg, "/prepare")
 	fmt.Println("[StartPrepare] After Broadcast!")
 	//broadcast(errCh, node.MyInfo.Url, dummy, "/prepare", node.PrivKey)
@@ -525,7 +531,7 @@ func (node *Node) StartThreadIfNotExists(seqID int64) consensus.PBFT {
 		newTotalConsensus := atomic.AddInt64(&node.TotalConsensus, 1)
 		fmt.Printf("Consensus Process.. newTotalConsensus num is %d\n", newTotalConsensus)	
 		node.startTransitionWithDeadline(seqID, state)
-		//state.GetTimerStartSendChannel() <- "ViewChange"
+		state.GetTimerStartSendChannel() <- "ViewChange"
 		state.GetTimerStartSendChannel() <- "Prepare"
 	}else {
 		node.StatesMutex.Unlock()
@@ -598,9 +604,15 @@ func (node *Node) resolveMsg() {
 		//case *consensus.CheckPointMsg:
 		//	node.GetCheckPoint(msg)
 		case *consensus.ViewChangeMsg:
-			node.GetViewChange(msg)
+			state = node.StartThreadIfNotExists(msg.SequenceID)
+			state.GetMsgSendChannel() <- msg
+
+			//node.GetViewChange(msg)
 		case *consensus.NewViewMsg:
-			node.GetNewView(msg)
+			state = node.StartThreadIfNotExists(msg.SequenceID)
+			state.GetMsgSendChannel() <- msg
+
+			//node.GetNewView(msg)
 		}
 		if err != "" {
 			// Print error.
@@ -617,7 +629,6 @@ func (node *Node) executeMsg() {
 	pairs := make(map[int64]*consensus.PrepareMsg)
 	for {
 		prepareMsg := <- node.MsgExecution
-		//node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
 		pairs[prepareMsg.SequenceID] = prepareMsg
 		fmt.Println("[CommitMsg]",prepareMsg.SequenceID,"/",time.Now().UnixNano())
 		for {
@@ -638,6 +649,9 @@ func (node *Node) executeMsg() {
 				//fmt.Println("[STAGE-DONE11] Commit SequenceID : ", int64(len(node.CommittedMsgs)))
 				break
 			}
+
+			node.States[prepareMsg.SequenceID].GetTimerStopSendChannel() <- "ViewChange"
+
 			fmt.Println("[Execute] /", lastSequenceID + 1,"/", time.Now().UnixNano())
 			// Add the committed message in a private log queue
 			// to print the orderly executed messages.

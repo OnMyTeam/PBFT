@@ -3,7 +3,7 @@ package network
 import (
 	"fmt"
 	"github.com/bigpicturelabs/consensusPBFT/pbft/consensus"
-	//"time"
+	"time"
 	"sync/atomic"
 	"unsafe"
 	"log"
@@ -36,7 +36,7 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	// Ignore VIEW-CHANGE message if the next view id is not new.
 	
 	vcs = node.VCStates[viewchangeMsg.SequenceID]
-	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
+	//fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
 	// Create a view state if it does not exist.
 	for vcs == nil {
 		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint, viewchangeMsg.SequenceID)
@@ -58,21 +58,22 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 	}
 
 	if newViewMsg != nil {
-		var lastCommittedMsg *consensus.PrepareMsg = nil
-		msgTotalCnt := int64(len(node.CommittedMsgs))
-		if msgTotalCnt > 0 {
-			lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
-		}
+		node.IsViewChanging = true
+	}
+
+	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)
+
+	if  node.MyInfo != nextPrimary{
 
 		var totalcon int64 = node.TotalConsensus	
-		for i := int64(lastCommittedMsg.SequenceID+1); i <= totalcon; i++ {
-	//		fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
+		for i := int64(newViewMsg.SequenceID); i <= totalcon; i++ {
+		//	fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
 			
 			state, _ := node.getState(i)
-			if i != lastCommittedMsg.SequenceID+1 {
-	//			fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
-				ch2 := state.GetMsgExitSendChannel()
-				ch2 <- 0
+			
+			ch := state.GetMsgExitSendChannel()
+			if ch != nil {
+				ch <- 0
 			}
 			if node.CommittedMsgs[i] != nil {
 				delete(node.CommittedMsgs, i)
@@ -86,33 +87,13 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 			delete(node.States, i)
 			atomic.AddInt64(&node.TotalConsensus, -1)
 		}
-	}
-	// From OSDI: When the primary of view v + 1 receives 2f valid
-	// view-change messages for view v + 1 from other replicas,
-	// it multicasts a NEW-VIEW message to all other replicas.
 	
-	// TODO: changeleader
-	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)
+		newViewMsg.Min_S = node.fillNewViewMsg(newViewMsg)
 
-	if newViewMsg == nil || node.MyInfo != nextPrimary {
-		fmt.Println("Before Return")
-		return
+		LogMsg(newViewMsg)
+	
+		node.Broadcast(newViewMsg, "/newview")
 	}
-
-	// Change View and Primary.
-	//node.updateView(node.NextCandidateIdex)
-
-	// Fill all the fields of NEW-VIEW message.
-	//max_s, min_s  = node.fillNewViewMsg(newViewMsg)
-	newViewMsg.Min_S = node.fillNewViewMsg(newViewMsg)
-
-	//fmt.Println(newViewMsg.PrepareMsg)
-//	LogStage("NewView", false)
-
-	LogMsg(newViewMsg)
-
-	node.Broadcast(newViewMsg, "/newview")
-//	LogStage("NewView", true)
 
 }
 
@@ -135,47 +116,35 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 	return min_s
 }
 
-func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
+func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 	// TODO verify new-view message
 	fmt.Printf("<<<<<<<<<<<<<<<<GetNewView seq %d >>>>>>>>>>>>>>>>: NextCandidateIdx: %d by %s\n", newviewMsg.SequenceID , newviewMsg.NextCandidateIdx, newviewMsg.NodeID)
 
-	//////////////////////////////////////////////////////////////////////////
-	var totalcon int64 = node.TotalConsensus
-//	fmt.Println("+++++ node.TotalConsensus", totalcon)
-
-	var lastCommittedMsg *consensus.PrepareMsg = nil
-	msgTotalCnt := int64(len(node.CommittedMsgs))
-	if msgTotalCnt > 0 {
-		lastCommittedMsg = node.CommittedMsgs[msgTotalCnt]
-	}
-
-	//if node.IsViewChanging == false || newviewMsg.Min_S+1 < totalcon {
-	if newviewMsg.Min_S+1 < totalcon {
-		//node.IsViewChanging = true
-
-		for i := newviewMsg.Min_S+1; i <= totalcon; i++ {
+	node.IsViewChanging = true
+	
+	var totalcon int64 = node.TotalConsensus	
+	for i := int64(newviewMsg.SequenceID); i <= totalcon; i++ {
+	//	fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
 		
-			state, _ := node.getState(i)
-			if i != lastCommittedMsg.SequenceID+1 {
-//				fmt.Println("state. GetSequenceID()  ",state.GetSequenceID())
-				ch2 := state.GetMsgExitSendChannel()
-				ch2 <- 0
-			}
-			delete(node.States, i)
-			if node.CommittedMsgs[i] != nil {
-				delete(node.CommittedMsgs, i)
-			}
-			if node.Committed[i] != 0 {
-				node.Committed[i] = 0
-			}
-			if node.Prepared[i] != 0 {
-				node.Prepared[i] = 0
-			}
-			atomic.AddInt64(&node.TotalConsensus, -1)
+		state, _ := node.getState(i)
+		
+		ch := state.GetMsgExitSendChannel()
+		if ch != nil {
+			ch <- 0
 		}
-
+		if node.CommittedMsgs[i] != nil {
+			delete(node.CommittedMsgs, i)
+		}
+		if node.Committed[i] != 0 {
+			node.Committed[i] = 0
+		}
+		if node.Prepared[i] != 0 {
+			node.Prepared[i] = 0
+		}
+		delete(node.States, i)
+		atomic.AddInt64(&node.TotalConsensus, -1)
 	}
-////////////////////////////////////////////////////////////////
+
 	node.NextCandidateIdx = newviewMsg.NextCandidateIdx
 
 	var vcs *consensus.VCState
@@ -222,20 +191,56 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) error {
 
 //	fmt.Println("newviewMsg.PrepareMsg: ", newviewMsg.PrepareMsg)
 	
-	viewchangechannel := ViewChangeChannel{
-		Min_S: newviewMsg.Min_S,
-		VCSCheck: true,
+	sequenceID := node.StableCheckPoint+1
+
+	node.updateViewID(node.StableCheckPoint)
+	node.updateEpochID(node.StableCheckPoint)
+				
+	fmt.Println("node.NextCandidateIdx: ", node.NextCandidateIdx)
+	primaryNode := node.NodeTable[node.NextCandidateIdx]
+
+				
+	fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(node.VCStates[node.NextCandidateIdx].GetReceiveViewchangeTime()))
+
+	atomic.AddInt64(&node.NextCandidateIdx, 1)
+
+	if sequenceID % 10 == 0 {
+	//	node.VCStates = make(map[int64]*consensus.VCState)
+		node.NextCandidateIdx = 10
 	}
 
-	node.ViewChangeChan <- viewchangechannel
+	node.StartThreadIfNotExists(sequenceID)
 
+	node.IsViewChanging = false
 
-	// verify view number of new-view massage
-	// if newviewMsg.nextCandidateIdx != node.View.ID + 1 {
-	// 	return nil
-	// }
+	if primaryNode.NodeID != node.MyInfo.NodeID {
+		var seed int64 = -1	
 
-	return nil
+		data := make([]byte, 1 << 20)
+		for i := range data {
+			data[i] = 'A'
+		}
+		data[len(data)-1]=0
+
+		prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
+			node.View.ID,int64(sequenceID),
+			node.MyInfo.NodeID, int(seed), node.EpochID)
+					
+
+		// Broadcast the dummy message.
+		errCh := make(chan error, 1)
+					
+		fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
+		node.Broadcast(prepareMsg, "/prepare")
+		fmt.Println("[StartPrepare] After Broadcast!")
+
+		err := <-errCh
+		if err != nil {
+			log.Println(err)
+		}
+
+	}
+
 }
 
 func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
