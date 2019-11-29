@@ -59,16 +59,12 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 
 	if newViewMsg != nil {
 		node.IsViewChanging = true
-	}
-
-	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)
-
-	if  node.MyInfo != nextPrimary{
+		time.Sleep(time.Millisecond * 200)
+		fmt.Println("+++++ node.IsViewChanging", node.IsViewChanging)
 
 		var totalcon int64 = node.TotalConsensus	
 		for i := int64(newViewMsg.SequenceID); i <= totalcon; i++ {
-		//	fmt.Println("+++++ i,  node.TotalConsensus", i, node.TotalConsensus)
-			
+
 			state, _ := node.getState(i)
 			
 			ch := state.GetMsgExitSendChannel()
@@ -87,17 +83,23 @@ func (node *Node) GetViewChange(viewchangeMsg *consensus.ViewChangeMsg) {
 			delete(node.States, i)
 			atomic.AddInt64(&node.TotalConsensus, -1)
 		}
-	
-		newViewMsg.Min_S = node.fillNewViewMsg(newViewMsg)
 
-		LogMsg(newViewMsg)
-	
-		node.Broadcast(newViewMsg, "/newview")
 	}
 
+	var nextPrimary = node.getPrimaryInfoByID(node.NextCandidateIdx)
+
+	if  node.MyInfo == nextPrimary && newViewMsg != nil {
+
+		newViewMsg.Min_S = node.FindStableCheckpoint(newViewMsg)
+		newViewMsg.EpochID = newViewMsg.Min_S / 10
+
+		LogMsg(newViewMsg)
+		fmt.Println("+++++ newView_Broadcast")
+		node.Broadcast(newViewMsg, "/newview")
+	}
 }
 
-func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
+func (node *Node) FindStableCheckpoint(newViewMsg *consensus.NewViewMsg) (int64){
 	// Search min_s the sequence number of the latest stable checkpoint and
 	// max_s the highest sequence number in a prepare message in V.
 	var min_s int64 = 0
@@ -108,11 +110,7 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 			min_s = vcm.StableCheckPoint
 		}
 	}
-
 //	fmt.Println("min_s ", min_s)
-
-	newViewMsg.EpochID = min_s / 10
-
 	return min_s
 }
 
@@ -121,6 +119,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 	fmt.Printf("<<<<<<<<<<<<<<<<GetNewView seq %d >>>>>>>>>>>>>>>>: NextCandidateIdx: %d by %s\n", newviewMsg.SequenceID , newviewMsg.NextCandidateIdx, newviewMsg.NodeID)
 
 	node.IsViewChanging = true
+	time.Sleep(time.Millisecond * 200)
 	
 	var totalcon int64 = node.TotalConsensus	
 	for i := int64(newviewMsg.SequenceID); i <= totalcon; i++ {
@@ -149,7 +148,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 
 	var vcs *consensus.VCState
 	vcs = node.VCStates[newviewMsg.SequenceID]
-	fmt.Printf("node.NextCandidateIdx : %d\n", node.NextCandidateIdx)
+	
 	// Create a view state if it does not exist.
 	for vcs == nil {
 		vcs = consensus.CreateViewChangeState(node.MyInfo.NodeID, len(node.NodeTable), node.NextCandidateIdx, node.StableCheckPoint, newviewMsg.SequenceID)
@@ -164,9 +163,9 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 		}
 	}
 	
-	for _, vcm := range newviewMsg.SetViewChangeMsgs {
-		node.GetViewChange(vcm)
-	}
+	// for _, vcm := range newviewMsg.SetViewChangeMsgs {
+	// 	node.GetViewChange(vcm)
+	// }
 	//////////////////////////////////////////////////////////////////////////
 
 	// Register new-view message into this node
@@ -176,9 +175,7 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 
 	// Fill missing states and messages
 	node.FillHole(newviewMsg)
-	//fmt.Println("==================After fillhole=============== ")
 	// Change View and Primary
-	//node.updateView(node.NextCandidateIdex)
 	node.StableCheckPoint = newviewMsg.Min_S
 	node.EpochID = newviewMsg.EpochID
 
@@ -191,29 +188,28 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 
 //	fmt.Println("newviewMsg.PrepareMsg: ", newviewMsg.PrepareMsg)
 	
-	sequenceID := node.StableCheckPoint+1
 
-	node.updateViewID(node.StableCheckPoint)
-	node.updateEpochID(node.StableCheckPoint)
+	node.updateViewID(newviewMsg.SequenceID-1)
+	node.updateEpochID(newviewMsg.SequenceID-1)
 				
 	fmt.Println("node.NextCandidateIdx: ", node.NextCandidateIdx)
 	primaryNode := node.NodeTable[node.NextCandidateIdx]
 
 				
-	fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(node.VCStates[node.NextCandidateIdx].GetReceiveViewchangeTime()))
+	fmt.Println("[VIEWCHANGE_DONE] ",",",newviewMsg.SequenceID,",",time.Since(node.VCStates[newviewMsg.SequenceID].GetReceiveViewchangeTime()))
 
 	atomic.AddInt64(&node.NextCandidateIdx, 1)
 
-	if sequenceID % 10 == 0 {
+	if newviewMsg.SequenceID % 10 == 0 {
 	//	node.VCStates = make(map[int64]*consensus.VCState)
 		node.NextCandidateIdx = 10
 	}
 
-	node.StartThreadIfNotExists(sequenceID)
+	node.StartThreadIfNotExists(newviewMsg.SequenceID)
 
 	node.IsViewChanging = false
 
-	if primaryNode.NodeID != node.MyInfo.NodeID {
+	if primaryNode.NodeID == node.MyInfo.NodeID {
 		var seed int64 = -1	
 
 		data := make([]byte, 1 << 20)
@@ -223,14 +219,15 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 		data[len(data)-1]=0
 
 		prepareMsg := PrepareMsgMaking("Op1", "Client1", data, 
-			node.View.ID,int64(sequenceID),
+			node.View.ID,int64(newviewMsg.SequenceID),
 			node.MyInfo.NodeID, int(seed), node.EpochID)
 					
-
+			log.Printf("Broadcasting dummy message from %s, sequenceId: %d, epochId: %d, viewId: %d",
+				node.MyInfo.NodeID, int64(newviewMsg.SequenceID), node.EpochID, node.View.ID)
 		// Broadcast the dummy message.
 		errCh := make(chan error, 1)
 					
-		fmt.Println("[StartPrepare]", "seqID / ",sequenceID,"/", time.Now().UnixNano())
+		fmt.Println("[StartPrepare]", "seqID / ",newviewMsg.SequenceID,"/", time.Now().UnixNano())
 		node.Broadcast(prepareMsg, "/prepare")
 		fmt.Println("[StartPrepare] After Broadcast!")
 

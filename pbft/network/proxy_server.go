@@ -124,11 +124,7 @@ func (server *Server) receiveLoop(cc *websocket.Conn, path string, nodeInfo *Nod
 		if ok == false {
 			fmt.Println("[receiveLoop-error] decoding error")
 		}
-<<<<<<< HEAD
-		/////////////////////////////////////////////////////////////////////////////////////////////
-=======
 		time.Sleep(time.Millisecond * 80)
->>>>>>> master
 		switch rawMsg.MsgType {
 		case "/prepare":
 			// ReqPrePareMsgs have RequestMsg and PrepareMsg
@@ -204,116 +200,7 @@ func (server *Server) sendGenesisMsgIfPrimary() {
 	fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
 	time.Sleep(time.Millisecond * 300)
 	server.node.Broadcast(prepareMsg, "/prepare")
-	// dummy := dummyMsg("Op1", "Client1", data, 
-	// 	server.node.View.ID,int64(sequenceID),
-	// 	server.node.MyInfo.NodeID, seed)
-	// //currentView := server.node.View.ID
 
-	// sequenceID := int64(0)
-	// committee_num := int64(10)
-
-	// for  {
-	// 	select {
-	// 	case <-ticker.C:
-	// 		if server.node.IsViewChanging {
-	// 			continue
-	// 		}
-
-	// 		sequenceID++
-
-	// 		server.node.updateView(sequenceID-1)
-	// 		server.node.updateEpochID(sequenceID-1)
-	// 		primaryNode := server.node.getPrimaryInfoByID(server.node.View.ID)
-			
-			
-
-	// 		fmt.Printf("server.node.MyInfo.NodeID: %s\n", server.node.MyInfo.NodeID)
-	// 		fmt.Printf("primaryNode.NodeID: %s\n", primaryNode.NodeID)
-			
-			
-	// 		if primaryNode.NodeID != server.node.MyInfo.NodeID {
-	// 			continue
-	// 		}
-
-	// 		log.Printf("server.node.View.ID: %d", server.node.View.ID)
-	// 		dummy := dummyMsg("Op1", "Client1", data, 
-	// 			server.node.View.ID,int64(sequenceID),
-	// 			server.node.MyInfo.NodeID, server.node.EpochID)	
-
-	// 		// Broadcast the dummy message.
-	// 		errCh := make(chan error, 1)
-	// 		log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
-	// 		fmt.Println("[StartPrepare] sequenceId:", sequenceID, time.Now().UnixNano())
-	// 		broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
-			
-
-
-	// 		err := <-errCh
-	// 		if err != nil {
-	// 			log.Println(err)
-	// 		}
-	// 	case viewchangechannel := <- server.node.ViewChangeChan:
-			
-		
-	// 		if  viewchangechannel.VCSCheck {
-				
-	// 			server.node.StableCheckPoint = viewchangechannel.Min_S
-	// 			sequenceID = server.node.StableCheckPoint+1
-
-	// 			server.node.updateView(server.node.StableCheckPoint)
-	// 			server.node.updateEpochID(server.node.StableCheckPoint)
-				
-	// 			fmt.Println("server.node.NextCandidateIdx: ", server.node.NextCandidateIdx)
-	// 			primaryNode := server.node.NodeTable[server.node.NextCandidateIdx]
-
-				
-	// 			fmt.Println("[VIEWCHANGE_DONE] ",",",sequenceID,",",time.Since(server.node.VCStates[server.node.NextCandidateIdx].GetReceiveViewchangeTime()))
-
-	// 			atomic.AddInt64(&server.node.NextCandidateIdx, 1)
-
-	// 			if sequenceID % committee_num == 0 {
-	// 				server.node.VCStates = make(map[int64]*consensus.VCState)
-	// 				server.node.NextCandidateIdx = committee_num
-	// 				//primaryNode = server.node.NodeTable[server.node.NextCandidateIdx]
-	// 			}
-
-	// 			go server.node.startTransitionWithDeadline(nil)
-	// 			server.node.IsViewChanging = false
-
-	// 			if primaryNode.NodeID != server.node.MyInfo.NodeID {
-	// 				continue
-	// 			}
-
-	// 			//log.Printf("--------------------------------view-change--------------------------------\n")
-	// 			dummy := dummyMsg("Op1", "Client1", data, 
-	// 				server.node.View.ID,int64(sequenceID),
-	// 				server.node.MyInfo.NodeID, server.node.EpochID)
-				
-
-	// 			// Broadcast the dummy message.
-	// 			errCh := make(chan error, 1)
-				
-
-	// 			log.Printf("Broadcasting dummy message from %s, sequenceId: %d, viewid: %d, epoch: %d ", server.node.MyInfo.Url, sequenceID, server.node.View.ID, server.node.EpochID)
-	// 			broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
-			
-	// 			err := <-errCh
-	// 			if err != nil {
-	// 				log.Println(err)
-	// 			}
-	// 		}
-	// 	}
-
-	// errCh := make(chan error, 1)
-	
-	// log.Printf("Broadcasting dummy message from %s, sequenceId: %d",
-	// 	server.node.MyInfo.NodeID, sequenceID)
-	// fmt.Println("[StartPrepare]", "seqID",sequenceID, time.Now().UnixNano())
-	// broadcast(errCh, server.node.MyInfo.Url, dummy, "/prepare", server.node.PrivKey)
-	// err := <-errCh
-	// if err != nil {
-	// 	log.Println(err)
-	// }
 }
 
 func broadcast(errCh chan<- error, url string, msg []byte, path string, privKey *ecdsa.PrivateKey) {
@@ -348,6 +235,7 @@ func attachSignatureMsg(msg []byte, privKey *ecdsa.PrivateKey, path string) []by
 	sigMgsBytes, _ := json.Marshal(&sigMgs)
 	return sigMgsBytes
 }
+
 func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.SignatureMsg,
 		error, bool){
 	var sigMgs consensus.SignatureMsg
@@ -360,6 +248,7 @@ func deattachSignatureMsg(msg []byte, pubkey *ecdsa.PublicKey)(consensus.Signatu
 	ok = consensus.Verify(pubkey, sigMgs.R, sigMgs.S, sigMgs.MarshalledMsg)
 	return sigMgs, nil, ok
 }
+
 func PrepareMsgMaking(operation string, clientID string, data []byte, 
 	viewID int64, sID int64, nodeID string, Seed int, epochID int64) *consensus.ReqPrePareMsgs {
 	var RequestMsg consensus.RequestMsg
@@ -389,34 +278,3 @@ func PrepareMsgMaking(operation string, clientID string, data []byte,
 
 	return &ReqPrePareMsgs
 }
-// func dummyMsg(operation string, clientID string, data []byte, 
-// 		viewID int64, sID int64, nodeID string, Seed int) []byte {
-// 	var RequestMsg consensus.RequestMsg
-// 	RequestMsg.Timestamp = time.Now().UnixNano()
-// 	RequestMsg.Operation = operation
-// 	RequestMsg.ClientID = clientID
-// 	RequestMsg.Data = string(data)
-// 	RequestMsg.SequenceID = sID
-	
-// 	digest, err := consensus.Digest(RequestMsg)
-
-// 	var PrepareMsg consensus.PrepareMsg
-// 	PrepareMsg.ViewID = viewID
-// 	PrepareMsg.SequenceID = sID
-// 	PrepareMsg.Digest = digest
-// 	PrepareMsg.EpochID = 0
-// 	PrepareMsg.NodeID = nodeID
-// 	PrepareMsg.Seed= Seed
-
-// 	var ReqPrePareMsgs consensus.ReqPrePareMsgs
-// 	ReqPrePareMsgs.RequestMsg = &RequestMsg
-// 	ReqPrePareMsgs.PrepareMsg = &PrepareMsg
-
-// 	jsonMsg, err := json.Marshal(ReqPrePareMsgs)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return nil
-// 	}
-
-// 	return []byte(jsonMsg)
-// }
