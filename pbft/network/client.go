@@ -29,8 +29,8 @@ const (
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024*10,
-	WriteBufferSize: 1024*10,
+	ReadBufferSize:  1024*100,
+	WriteBufferSize: 1024*100,
 }
 
 // Client is a middleman between the websocket connection and the hub.
@@ -123,8 +123,8 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	//client := &Client{hub: hub, conn: conn, send: make(chan []byte, 512)}
+	//client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 512)}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in

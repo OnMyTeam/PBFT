@@ -76,6 +76,7 @@ func CreateState(viewID int64, nodeID string, totNodes int,  seqID int64) *State
 
 		MsgState: make(chan interface{}, totNodes * 200), // stack enough
 		MsgExit: make(chan int64, totNodes * 100),
+		MsgExit1: make(chan int64, totNodes * 100),
 		TimerStartCh: make(chan string, totNodes * 100),
 		TimerStopCh: make(chan string, totNodes * 100),
 
@@ -239,16 +240,18 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	// Append VoteMsgs of CollateMsg to My VoteMsgs
 	switch collateMsg.MsgType {
 	case COMMITTED:
-		for NodeID, VoteMsg := range state.GetVoteMsgs() {
-			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] || collateMsg.ReceivedVoteMsg[NodeID] == nil {
-				continue
-			}
-			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
-			if collateMsg.ReceivedVoteMsg[NodeID].MsgType == VOTE {
-				atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
-			}
-		}
-	// If Committed, make CollateMsg
+		return CollateMsg{
+			//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+			ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+			SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+			ViewID:		state.ViewID,
+			Digest:		state.MsgLogs.Digest,
+			NodeID:		"",
+			SequenceID:	state.SequenceID,
+			MsgType:	COMMITTED,
+		}, nil
+
+	case UNCOMMITTED:
 		if int(state.MsgLogs.TotalVoteOKMsg) >= 2*state.F + 1 {
 			return CollateMsg{
 				//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
@@ -260,9 +263,20 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 				SequenceID:	state.SequenceID,
 				MsgType:	COMMITTED,
 			}, nil
+		} else {
+			return CollateMsg{
+				//ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+				ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+				SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+				ViewID:		state.ViewID,
+				Digest:		state.MsgLogs.Digest,
+				NodeID:		"",
+				SequenceID:	state.SequenceID,
+				MsgType:	UNCOMMITTED,
+			}, nil	
 		}
-	case UNCOMMITTED:
 		// TODO implement this
+	
 	}
 	return newcollateMsg, nil
 }
@@ -356,10 +370,13 @@ func (state *State) GetSentVoteMsgs() *VoteMsg {
 func (state *State) FillHoleVoteMsgs(collateMsg *CollateMsg) {
 
 	for NodeID, VoteMsg := range state.GetVoteMsgs() {
-			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] {
+			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] || collateMsg.ReceivedVoteMsg[NodeID] == nil {
 				continue
 			}
 			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
+			if collateMsg.ReceivedVoteMsg[NodeID].MsgType == VOTE {
+				atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
+			}			
 	}
 }
 

@@ -111,7 +111,7 @@ func (node *Node) fillNewViewMsg(newViewMsg *consensus.NewViewMsg) (int64){
 
 //	fmt.Println("min_s ", min_s)
 
-	newViewMsg.EpochID = min_s / 10
+	newViewMsg.EpochID = min_s / int64(len(node.NodeTable))
 
 	return min_s
 }
@@ -204,9 +204,9 @@ func (node *Node) GetNewView(newviewMsg *consensus.NewViewMsg) {
 
 	atomic.AddInt64(&node.NextCandidateIdx, 1)
 
-	if sequenceID % 10 == 0 {
+	if sequenceID % 7 == 0 {
 	//	node.VCStates = make(map[int64]*consensus.VCState)
-		node.NextCandidateIdx = 10
+		node.NextCandidateIdx = 7
 	}
 
 	node.StartThreadIfNotExists(sequenceID)
@@ -264,7 +264,7 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 		prepare.SequenceID = newSequenceID
 		prepare.ViewID = int64(0)
 		prepare.Digest = ""
-		prepare.EpochID = newSequenceID / 10
+		prepare.EpochID = newSequenceID / int64(len(node.NodeTable))
 		prepare.NodeID = ""
 
 
@@ -284,12 +284,12 @@ func (node *Node) FillHole(newviewMsg *consensus.NewViewMsg) {
 }
 
 func (node *Node) updateEpochID(sequenceID int64) {
-	epochID := sequenceID / 10
+	epochID := sequenceID / int64(len(node.NodeTable))
 	node.EpochID = epochID
 }
 
 func (node *Node) updateViewID(viewID int64) {
-	var participant int64 = 10
+	var participant int64 = int64(len(node.NodeTable))
 	node.View.ID = viewID % participant
 	node.View.Primary = node.getPrimaryInfoByID(node.View.ID)
 }
