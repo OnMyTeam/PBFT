@@ -15,20 +15,23 @@ import (
 const (
 	// Time allowed to write a message to the peer.
 	//writeWait = 1 * time.Second
-	writeWait = 3 * time.Second
+	writeWait = 10 * time.Second
 	// Time allowed to read the next pong message from the peer.
 	//pongWait = 3 * time.Second
-	pongWait = 9 * time.Second
+	pongWait = 20 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	//pingPeriod = (pongWait * 9) / 10
 	pingPeriod = (pongWait * 9) / 10
 	// Maximum message size allowed from peer.
-	maxMessageSize = 2097152
+	maxMessageSize = 2097152*5
 	//maxMessageSize = 209715200000
 )
 
-var upgrader = websocket.Upgrader{}
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024*100,
+	WriteBufferSize: 1024*100,
+}
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {

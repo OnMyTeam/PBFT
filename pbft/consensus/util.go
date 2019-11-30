@@ -48,11 +48,18 @@ func Verify(pubKey *ecdsa.PublicKey, r, s *big.Int, data []byte) bool {
 	return ecdsa.Verify(pubKey, signHash[:], r, s)
 }
 
-// func RandBytes(n int) []byte {
-// 	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-// 	b := make([]byte, n)
-// 	for i := range b {
-// 		b[i] = letterBytes[mrand.Intn(len(letterBytes))]
-// 	}
-// 	return b
-// }
+func NumOfPhase(s string) int64 {
+	switch s{
+	case "Prepare":
+		return 0
+	case "Vote":
+		return 1
+	case "Collate":
+		return 2
+	case "ViewChange":
+		return 3
+	case "Total":
+		return 4
+	}	
+	return -1
+}
