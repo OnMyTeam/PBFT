@@ -40,7 +40,7 @@ type VoteMsg struct {
 
 //Adaptive BFT
 type CollateMsg struct {
-	//ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
+	ReceivedPrepare		*PrepareMsg 		`json:"received_prepare`
 	ReceivedVoteMsg     map[string]*VoteMsg `json:"commit_proof"`
 	SentVoteMsg         *VoteMsg   			`json:"sent_vote_msg"`
 	ViewID              int64      			`json:"viewID"`
