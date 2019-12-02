@@ -105,7 +105,7 @@ func NewNode(myInfo *NodeInfo, nodeTable []*NodeInfo, seedNodeTables [20][]*Node
 		// Channels
 		MsgEntrance: make(chan interface{}, len(nodeTable) * len(nodeTable)),
 		MsgDelivery: make(chan interface{}, len(nodeTable) * len(nodeTable)), // TODO: enough?
-		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable)),
+		MsgExecution: make(chan *consensus.PrepareMsg, len(nodeTable) * len(nodeTable)),
 		MsgOutbound: make(chan *MsgOut, len(nodeTable)),
 		MsgError: make(chan []error, len(nodeTable)),
 		ViewMsgEntrance: make(chan interface{}, len(nodeTable)*3),

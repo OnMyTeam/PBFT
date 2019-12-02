@@ -236,33 +236,7 @@ func (state *State) VoteAQ(TotalNode int32) (CollateMsg, error){
 
 	return collateMsg, nil
 }
-func (state *State) CollateAQ(TotalNode int32) (CollateMsg, error){
-	newTotalCollateMsg := state.MsgLogs.TotalCollateMsg
-	newTotalVoteOKMsg := state.MsgLogs.TotalVoteOKMsg
-	//newTotalVoteMsg := state.MsgLogs.TotalVoteMsg
-	// byzantine length
-	byzantine := TotalNode - newTotalCollateMsg
-	fmt.Println("TotalNode :",TotalNode, "newTotalCollateMsg :",newTotalCollateMsg, "byzantine length :", byzantine, "state.SequenceID :", state.SequenceID)
-	collateMsg := CollateMsg{
-		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
-		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
-		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
-		ViewID:		state.ViewID,
-		Digest:		state.MsgLogs.Digest,
-		NodeID:		"",
-		SequenceID:	state.SequenceID,
-		MsgType:	0,
-	}	
-	// If Committed, make CollateMsg
-	if int(newTotalVoteOKMsg) >= (2*state.F - int(byzantine) + 1) && (2*state.F - int(byzantine) + 1) >= 1{
-		collateMsg.MsgType = COMMITTED
 
-	}else {
-		collateMsg.MsgType = UNCOMMITTED	
-	}
-
-	return collateMsg, nil
-}
 func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	var newcollateMsg CollateMsg
 	// Append msg to its logs
@@ -326,6 +300,33 @@ func (state *State) Collate(collateMsg *CollateMsg) (CollateMsg, error) {
 	
 	}
 	return newcollateMsg, nil
+}
+func (state *State) CollateAQ(TotalNode int32) (CollateMsg, error){
+	newTotalCollateMsg := state.MsgLogs.TotalCollateMsg
+	newTotalVoteOKMsg := state.MsgLogs.TotalVoteOKMsg
+	//newTotalVoteMsg := state.MsgLogs.TotalVoteMsg
+	// byzantine length
+	byzantine := TotalNode - newTotalCollateMsg
+	fmt.Println("TotalNode :",TotalNode, "newTotalCollateMsg :",newTotalCollateMsg, "byzantine length :", byzantine, "state.SequenceID :", state.SequenceID)
+	collateMsg := CollateMsg{
+		ReceivedPrepare: 	state.MsgLogs.PrepareMsg,
+		ReceivedVoteMsg:	state.MsgLogs.VoteMsgs,
+		SentVoteMsg:        state.MsgLogs.SentVoteMsg,
+		ViewID:		state.ViewID,
+		Digest:		state.MsgLogs.Digest,
+		NodeID:		"",
+		SequenceID:	state.SequenceID,
+		MsgType:	0,
+	}	
+	// If Committed, make CollateMsg
+	if int(newTotalVoteOKMsg) >= (2*state.F - int(byzantine) + 1) && (2*state.F - int(byzantine) + 1) >= 1{
+		collateMsg.MsgType = COMMITTED
+
+	}else {
+		collateMsg.MsgType = UNCOMMITTED	
+	}
+
+	return collateMsg, nil
 }
 func (state *State) SetBizantine(nodeID string) bool {
 	/*
@@ -415,18 +416,21 @@ func (state *State) GetSentVoteMsgs() *VoteMsg {
 	return state.MsgLogs.SentVoteMsg
 }
 func (state *State) FillHoleVoteMsgs(collateMsg *CollateMsg) {
+	var newTotalVoteOKMsg int32
 	state.MsgLogs.VoteMsgsMutex.RLock()
 	for NodeID, VoteMsg := range state.GetVoteMsgs() {
 			if  VoteMsg == collateMsg.ReceivedVoteMsg[NodeID] || collateMsg.ReceivedVoteMsg[NodeID] == nil {
-				fmt.Println("Already Save VoteMsg ", NodeID)
+				// fmt.Println("Already Save VoteMsg ", NodeID)
 				continue
 			}
 			state.GetVoteMsgs()[NodeID] = collateMsg.ReceivedVoteMsg[NodeID]
-			fmt.Println("Save VoteMsg ", NodeID)
+			// fmt.Println("Save VoteMsg ", NodeID)
 			if collateMsg.ReceivedVoteMsg[NodeID].MsgType == VOTE {
-				atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
+				// fmt.Println("Save VoteOKMsg ", NodeID)
+				newTotalVoteOKMsg = atomic.AddInt32(&state.MsgLogs.TotalVoteOKMsg, 1)
 			}			
 	}
+	fmt.Println("Total VoteOKMsg : ", newTotalVoteOKMsg)
 	state.MsgLogs.VoteMsgsMutex.RUnlock()
 }
 
