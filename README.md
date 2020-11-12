@@ -13,12 +13,30 @@
 ## <b>3. 왜 합의에 필요한 전체 노드수(N)는 3f + 1일까?</b>
 전체 노드 수가 N이고, 장애 또는 악의적인 노드가 f개 일때, 정상적인 합의를 위한 최소한의 노드 수는 N=3f+1이다.<br>
 PBFT에서는 2가지 장애 상황이 있는데 먼저 정상적으로 메세지를 보냈지만 전송되지 않는 f대의 경우가 있다. 이때 합의를 위해서는 전체 N개중 장애 노드인 f개를 뺀 N - f대의 노드에 악의적으로 잘못된 메세지를 보내는 노드 f대를 뺀 (N - f) - f대의 노드로 합의를 이루어야 한다. 합의를 이루기 위해선, (N - f) - f대의 노드가 장애 또는 악의적인 노드인 f대 보다 많아야 하는 (N - f) - f > f 조건이 성립되기 때문에 N > 3f를 만족하는 최소한의 조건 <b>N = 3f + 1</b>이 성립 된다.
-## <b>4. Code structure of the implementation</b>
+
+## <b>4. 동작과정</b>
+### <b>4.1 요약</b>
+* client는 먼저 합의할 request 메세지를 primary노드에게 전송한다.
+* client로 부터 request메세지를 수신받은 primary노드는 나머지 backup노드들에게 request메세지가 담긴 pre-prepare 메세지를 전송한다.
+* primary로 부터 pre-prepare메세지를 수신받은 backup노드들은 prepare, commit phase를 통해 각자 결과값을 도출 한다.
+* client 노드는 f + 1개의 동일한 응답을 받으면 정상적인 값이라고 판단한다.
+### <b>4.2 각 phase별 상세</b>
+#### 4.2.1 <b>request(<REQUEST,o,t,c>s_c)</b>
+* client는 primary노드에게 작업 o, 요청시간 t, client 식별 ID c를 포함하여 서명을 추가한 뒤 primary노드에게 전송한다.
+```
+<REQUEST,o,t,c>s_c
+
+o: client가 요청한 작업
+t: 요청 시간
+c: client 식별 ID
+s_c: client의 서명값 (예시:<REQUEST,o,t,c>s_c는 <REQUEST,o,t,c>메세지를 client c가 서명한 것임 )
+```
+## <b>5. Code structure of the implementation</b>
 
 
 ![](./pbft-consensus-architecture.png)
 
-## <b>5. Working Screenshot</b>
+## <b>6. Working Screenshot</b>
 ![](./working-screenshot.png)
 
 ## License
